@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 
 function Sidebar({ isOpen, onToggle, activeView, onViewChange, onNewTask }) {
   const navItems = [
@@ -23,14 +23,20 @@ function Sidebar({ isOpen, onToggle, activeView, onViewChange, onNewTask }) {
     >
       <div className="flex flex-col h-full">
         <div className="flex items-center gap-3 p-4 border-b border-gray-700">
-          <div className="p-2 bg-blue-600 rounded-lg text-xl">🧠</div>
+          <div className="p-2 bg-blue-600 rounded-lg text-xl" role="img" aria-label="OpenCode Logo">
+            🧠
+          </div>
           {isOpen && (
             <div>
-              <h2 className="font-bold text-lg">OpenCode</h2>
+              <h1 className="font-bold text-lg">OpenCode</h1>
               <p className="text-xs text-gray-400">Auto Interface</p>
             </div>
           )}
-          <button onClick={onToggle} className="ml-auto text-gray-400 hover:text-white">
+          <button
+            onClick={onToggle}
+            className="ml-auto text-gray-400 hover:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 rounded p-1"
+            aria-label={isOpen ? "Collapse Sidebar" : "Expand Sidebar"}
+          >
             {isOpen ? "◀" : "▶"}
           </button>
         </div>
@@ -41,11 +47,14 @@ function Sidebar({ isOpen, onToggle, activeView, onViewChange, onNewTask }) {
               <button
                 key={item.id}
                 onClick={() => onViewChange(item.id)}
-                className={`w-full text-left p-3 rounded-lg transition-colors flex items-center gap-3 ${
+                className={`w-full text-left p-3 rounded-lg transition-colors flex items-center gap-3 focus:outline-none focus:ring-2 focus:ring-blue-500 ${
                   activeView === item.id ? "bg-blue-600 text-white" : "hover:bg-gray-800 text-gray-300"
                 }`}
+                aria-current={activeView === item.id ? "page" : undefined}
               >
-                <span className="text-xl">{item.icon}</span>
+                <span className="text-xl" aria-hidden="true">
+                  {item.icon}
+                </span>
                 <div className="flex-1">
                   <div className="text-sm font-medium">{item.label}</div>
                   <div className="text-xs text-gray-400">{item.description}</div>
@@ -59,11 +68,11 @@ function Sidebar({ isOpen, onToggle, activeView, onViewChange, onNewTask }) {
           <div className="p-4 border-t border-gray-700 space-y-2">
             <button
               onClick={onNewTask}
-              className="w-full gradient-bg text-white py-2 px-4 rounded-lg font-medium hover:opacity-90"
+              className="w-full gradient-bg text-white py-2 px-4 rounded-lg font-medium hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               🚀 New Task
             </button>
-            <button className="w-full bg-gray-800 text-white py-2 px-4 rounded-lg font-medium hover:bg-gray-700">
+            <button className="w-full bg-gray-800 text-white py-2 px-4 rounded-lg font-medium hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500">
               🔗 Share Codebase
             </button>
           </div>
@@ -100,7 +109,7 @@ function AutoInterfaceShowcase() {
   return (
     <div className="space-y-6">
       <div className="text-center space-y-4">
-        <h2 className="text-3xl font-bold text-gray-900">🧠 Auto Task Analysis</h2>
+        <h1 className="text-3xl font-bold text-gray-900">🧠 Auto Task Analysis</h1>
         <p className="text-lg text-gray-600 max-w-2xl mx-auto">
           Describe a task and see the auto-routing decision, confidence, and execution plan.
         </p>
@@ -109,17 +118,20 @@ function AutoInterfaceShowcase() {
       <div className="max-w-4xl mx-auto">
         <div className="bg-white rounded-xl border border-gray-200 shadow-lg p-6">
           <div className="space-y-4">
-            <label className="block text-sm font-medium text-gray-700">Describe your task:</label>
+            <label htmlFor="task-description" className="block text-sm font-medium text-gray-700">
+              Describe your task:
+            </label>
             <textarea
+              id="task-description"
               value={prompt}
               onChange={(event) => setPrompt(event.target.value)}
               placeholder='e.g., "Add user authentication with JWT tokens" or "Explore codebase to understand architecture"'
-              className="w-full h-32 p-3 border border-gray-300 rounded-lg mono text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+              className="w-full h-32 p-3 border border-gray-300 rounded-lg mono text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
             />
             <button
               onClick={handleAnalyze}
               disabled={!prompt.trim() || isAnalyzing}
-              className={`gradient-bg text-white px-6 py-3 rounded-lg font-medium transition-opacity ${
+              className={`gradient-bg text-white px-6 py-3 rounded-lg font-medium transition-opacity focus:outline-none focus:ring-2 focus:ring-blue-500 ${
                 !prompt.trim() || isAnalyzing ? "opacity-50 cursor-not-allowed" : "hover:opacity-90"
               }`}
             >
@@ -129,26 +141,34 @@ function AutoInterfaceShowcase() {
 
           {analysis && (
             <div className="mt-6 space-y-4 border-t border-gray-200 pt-6">
-              <h3 className="text-xl font-bold text-gray-900">🎯 Analysis Results</h3>
+              <h2 className="text-xl font-bold text-gray-900">🎯 Analysis Results</h2>
 
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                 <div className="bg-blue-50 p-4 rounded-lg">
-                  <div className="text-2xl mb-2">📝</div>
+                  <div className="text-2xl mb-2" aria-hidden="true">
+                    📝
+                  </div>
                   <div className="text-sm text-gray-600">Task Type</div>
                   <div className="font-bold text-blue-600 capitalize">{analysis.taskType}</div>
                 </div>
                 <div className="bg-purple-50 p-4 rounded-lg">
-                  <div className="text-2xl mb-2">📊</div>
+                  <div className="text-2xl mb-2" aria-hidden="true">
+                    📊
+                  </div>
                   <div className="text-sm text-gray-600">Complexity</div>
                   <div className="font-bold text-purple-600 capitalize">{analysis.complexity}</div>
                 </div>
                 <div className="bg-green-50 p-4 rounded-lg">
-                  <div className="text-2xl mb-2">🤖</div>
+                  <div className="text-2xl mb-2" aria-hidden="true">
+                    🤖
+                  </div>
                   <div className="text-sm text-gray-600">Agent</div>
                   <div className="font-bold text-green-600 capitalize">{analysis.agent}</div>
                 </div>
                 <div className="bg-orange-50 p-4 rounded-lg">
-                  <div className="text-2xl mb-2">🧠</div>
+                  <div className="text-2xl mb-2" aria-hidden="true">
+                    🧠
+                  </div>
                   <div className="text-sm text-gray-600">Model</div>
                   <div className="font-bold text-orange-600">{analysis.model}</div>
                 </div>
@@ -159,7 +179,13 @@ function AutoInterfaceShowcase() {
                   <div className="text-sm font-medium text-gray-700">Confidence Score</div>
                   <div className="text-lg font-bold text-green-600">{(analysis.confidence * 100).toFixed(1)}%</div>
                 </div>
-                <div className="w-full bg-gray-200 rounded-full h-2">
+                <div
+                  className="w-full bg-gray-200 rounded-full h-2"
+                  role="progressbar"
+                  aria-valuenow={analysis.confidence * 100}
+                  aria-valuemin="0"
+                  aria-valuemax="100"
+                >
                   <div
                     className="bg-green-600 h-2 rounded-full transition-all duration-500"
                     style={{ width: `${analysis.confidence * 100}%` }}
@@ -196,14 +222,19 @@ function Workspace({ tasks, ideas, roadmap, memories, sessions, statusMap, onNew
 
   return (
     <div className="space-y-6">
-      <h2 className="text-2xl font-bold">💼 Workspace</h2>
-      <p className="text-gray-600">Unified execution view across tasks, ideas, and context.</p>
+      <div>
+        <h1 className="text-2xl font-bold">💼 Workspace</h1>
+        <p className="text-gray-600">Unified execution view across tasks, ideas, and context.</p>
+      </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="bg-white rounded-xl border border-gray-200 shadow-lg p-6">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-xl font-bold">Active Tasks</h3>
-            <button onClick={onNewTask} className="text-xs text-blue-600 hover:underline">
+            <h2 className="text-xl font-bold">Active Tasks</h2>
+            <button
+              onClick={onNewTask}
+              className="text-xs text-blue-600 hover:underline focus:outline-none focus:ring-2 focus:ring-blue-500 rounded"
+            >
               New Task
             </button>
           </div>
@@ -221,7 +252,7 @@ function Workspace({ tasks, ideas, roadmap, memories, sessions, statusMap, onNew
         </div>
 
         <div className="bg-white rounded-xl border border-gray-200 shadow-lg p-6">
-          <h3 className="text-xl font-bold mb-4">Execution Pulse</h3>
+          <h2 className="text-xl font-bold mb-4">Execution Pulse</h2>
           <div className="space-y-4">
             <div>
               <div className="text-2xl font-bold text-green-600">{doneCount}</div>
@@ -240,8 +271,11 @@ function Workspace({ tasks, ideas, roadmap, memories, sessions, statusMap, onNew
 
         <div className="bg-white rounded-xl border border-gray-200 shadow-lg p-6">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-xl font-bold">Session Activity</h3>
-            <button onClick={onOpenInsights} className="text-xs text-blue-600 hover:underline">
+            <h2 className="text-xl font-bold">Session Activity</h2>
+            <button
+              onClick={onOpenInsights}
+              className="text-xs text-blue-600 hover:underline focus:outline-none focus:ring-2 focus:ring-blue-500 rounded"
+            >
               Open Insights
             </button>
           </div>
@@ -272,7 +306,7 @@ function Workspace({ tasks, ideas, roadmap, memories, sessions, statusMap, onNew
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="bg-white rounded-xl border border-gray-200 shadow-lg p-6">
-          <h3 className="text-xl font-bold mb-4">Roadmap Focus</h3>
+          <h2 className="text-xl font-bold mb-4">Roadmap Focus</h2>
           <div className="space-y-3">
             {focus.map((feature) => (
               <div key={feature.id} className="flex items-center justify-between text-sm">
@@ -285,7 +319,7 @@ function Workspace({ tasks, ideas, roadmap, memories, sessions, statusMap, onNew
         </div>
 
         <div className="bg-white rounded-xl border border-gray-200 shadow-lg p-6">
-          <h3 className="text-xl font-bold mb-4">Context Highlights</h3>
+          <h2 className="text-xl font-bold mb-4">Context Highlights</h2>
           <div className="space-y-3">
             {memories.slice(0, 4).map((item) => (
               <div key={item.id} className="text-sm text-gray-700">
@@ -360,45 +394,64 @@ function TaskWizard({ open, onClose, onSubmit }) {
   if (!open) return null
 
   return (
-    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+    <div
+      className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="wizard-title"
+    >
       <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl p-6 space-y-4">
         <div className="flex items-center justify-between">
           <div>
-            <h3 className="text-xl font-bold">Create Task</h3>
+            <h3 id="wizard-title" className="text-xl font-bold">
+              Create Task
+            </h3>
             <p className="text-sm text-gray-500">
               Step {step + 1} of {steps.length}: {steps[step]}
             </p>
           </div>
-          <button onClick={handleClose} className="text-gray-400 hover:text-gray-600">
+          <button
+            onClick={handleClose}
+            className="text-gray-400 hover:text-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded p-1"
+            aria-label="Close"
+          >
             ✕
           </button>
         </div>
 
         {step === 0 && (
           <div className="space-y-3">
+            <label htmlFor="wizard-title-input" className="sr-only">
+              Task title
+            </label>
             <input
+              id="wizard-title-input"
               value={title}
               onChange={(event) => setTitle(event.target.value)}
               placeholder="Task title"
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
+            <label htmlFor="wizard-desc-input" className="sr-only">
+              Description
+            </label>
             <textarea
+              id="wizard-desc-input"
               value={description}
               onChange={(event) => setDescription(event.target.value)}
               placeholder="Describe the task"
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm h-28"
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm h-28 focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
         )}
 
         {step === 1 && (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <label className="text-sm">
+            <label className="text-sm block">
               Category
               <select
                 value={category}
                 onChange={(event) => setCategory(event.target.value)}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                className="w-full mt-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 {categories.map((item) => (
                   <option key={item} value={item}>
@@ -407,12 +460,12 @@ function TaskWizard({ open, onClose, onSubmit }) {
                 ))}
               </select>
             </label>
-            <label className="text-sm">
+            <label className="text-sm block">
               Complexity
               <select
                 value={level}
                 onChange={(event) => setLevel(event.target.value)}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                className="w-full mt-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 {complexity.map((item) => (
                   <option key={item} value={item}>
@@ -421,12 +474,12 @@ function TaskWizard({ open, onClose, onSubmit }) {
                 ))}
               </select>
             </label>
-            <label className="text-sm">
+            <label className="text-sm block">
               Priority
               <select
                 value={priority}
                 onChange={(event) => setPriority(event.target.value)}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                className="w-full mt-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 {priorities.map((item) => (
                   <option key={item} value={item}>
@@ -440,46 +493,64 @@ function TaskWizard({ open, onClose, onSubmit }) {
 
         {step === 2 && (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <label htmlFor="wizard-owner" className="sr-only">
+              Owner
+            </label>
             <input
+              id="wizard-owner"
               value={owner}
               onChange={(event) => setOwner(event.target.value)}
               placeholder="Owner"
-              className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
+              className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
+            <label htmlFor="wizard-status" className="sr-only">
+              Status
+            </label>
             <select
+              id="wizard-status"
               value={status}
               onChange={(event) => setStatus(event.target.value)}
-              className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
+              className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="backlog">Backlog</option>
               <option value="in_progress">In Progress</option>
               <option value="review">Review</option>
               <option value="done">Done</option>
             </select>
+            <label htmlFor="wizard-estimate" className="sr-only">
+              Estimate
+            </label>
             <input
+              id="wizard-estimate"
               value={estimate}
               onChange={(event) => setEstimate(event.target.value)}
               placeholder="Estimate"
-              className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
+              className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
         )}
 
         <div className="flex items-center justify-between">
-          <button onClick={handleBack} className="text-sm px-3 py-2 border border-gray-200 rounded-lg">
+          <button
+            onClick={handleBack}
+            className="text-sm px-3 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
             Back
           </button>
           <div className="flex items-center gap-2">
             {step < steps.length - 1 && (
               <button
                 onClick={handleNext}
-                className="text-sm px-3 py-2 border border-gray-200 rounded-lg hover:bg-gray-50"
+                className="text-sm px-3 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 Next
               </button>
             )}
             {step === steps.length - 1 && (
-              <button onClick={handleSubmit} className="gradient-bg text-white px-4 py-2 rounded-lg">
+              <button
+                onClick={handleSubmit}
+                className="gradient-bg text-white px-4 py-2 rounded-lg font-medium focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
                 Create Task
               </button>
             )}
@@ -529,42 +600,69 @@ function TaskEditDialog({ task, onClose, onSave }) {
   }
 
   return (
-    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+    <div
+      className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="edit-task-title"
+    >
       <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl p-6 space-y-4">
         <div className="flex items-center justify-between">
-          <h3 className="text-xl font-bold">Edit Task</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+          <h3 id="edit-task-title" className="text-xl font-bold">
+            Edit Task
+          </h3>
+          <button
+            onClick={onClose}
+            className="text-gray-400 hover:text-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded p-1"
+            aria-label="Close"
+          >
             ✕
           </button>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <label htmlFor="edit-title" className="sr-only">
+            Task title
+          </label>
           <input
+            id="edit-title"
             value={title}
             onChange={(event) => setTitle(event.target.value)}
             placeholder="Task title"
-            className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
+            className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
+          <label htmlFor="edit-owner" className="sr-only">
+            Owner
+          </label>
           <input
+            id="edit-owner"
             value={owner}
             onChange={(event) => setOwner(event.target.value)}
             placeholder="Owner"
-            className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
+            className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
+          <label htmlFor="edit-status" className="sr-only">
+            Status
+          </label>
           <select
+            id="edit-status"
             value={status}
             onChange={(event) => setStatus(event.target.value)}
-            className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
+            className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
             <option value="backlog">Backlog</option>
             <option value="in_progress">In Progress</option>
             <option value="review">Review</option>
             <option value="done">Done</option>
           </select>
+          <label htmlFor="edit-category" className="sr-only">
+            Category
+          </label>
           <select
+            id="edit-category"
             value={category}
             onChange={(event) => setCategory(event.target.value)}
-            className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
+            className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
             <option value="General">General</option>
             <option value="Feature">Feature</option>
@@ -572,45 +670,67 @@ function TaskEditDialog({ task, onClose, onSave }) {
             <option value="Refactor">Refactor</option>
             <option value="Research">Research</option>
           </select>
+          <label htmlFor="edit-complexity" className="sr-only">
+            Complexity
+          </label>
           <select
+            id="edit-complexity"
             value={complexity}
             onChange={(event) => setComplexity(event.target.value)}
-            className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
+            className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
             <option value="Simple">Simple</option>
             <option value="Medium">Medium</option>
             <option value="Complex">Complex</option>
           </select>
+          <label htmlFor="edit-priority" className="sr-only">
+            Priority
+          </label>
           <select
+            id="edit-priority"
             value={priority}
             onChange={(event) => setPriority(event.target.value)}
-            className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
+            className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
             <option value="Low">Low</option>
             <option value="Normal">Normal</option>
             <option value="High">High</option>
             <option value="Urgent">Urgent</option>
           </select>
+          <label htmlFor="edit-estimate" className="sr-only">
+            Estimate
+          </label>
           <input
+            id="edit-estimate"
             value={estimate}
             onChange={(event) => setEstimate(event.target.value)}
             placeholder="Estimate"
-            className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
+            className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
         </div>
 
+        <label htmlFor="edit-description" className="sr-only">
+          Task description
+        </label>
         <textarea
+          id="edit-description"
           value={description}
           onChange={(event) => setDescription(event.target.value)}
           placeholder="Task description"
-          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm h-28"
+          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm h-28 focus:outline-none focus:ring-2 focus:ring-blue-500"
         />
 
         <div className="flex items-center justify-end gap-2">
-          <button onClick={onClose} className="text-sm px-3 py-2 border border-gray-200 rounded-lg">
+          <button
+            onClick={onClose}
+            className="text-sm px-3 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
             Cancel
           </button>
-          <button onClick={handleSave} className="gradient-bg text-white px-4 py-2 rounded-lg">
+          <button
+            onClick={handleSave}
+            className="gradient-bg text-white px-4 py-2 rounded-lg font-medium focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
             Save Changes
           </button>
         </div>
@@ -624,23 +744,65 @@ function FileDrawer({ task, onClose }) {
   const [items, setItems] = useState([])
   const [file, setFile] = useState(null)
   const [content, setContent] = useState("")
+  const [error, setError] = useState(null)
+  const [loading, setLoading] = useState(false)
+  
+  // Ref for focus management
+  const drawerRef = useRef(null)
+  const closeButtonRef = useRef(null)
+
+  // Focus trap and escape key handler
+  useEffect(() => {
+    if (!task) return
+
+    const handleKeyDown = (e) => {
+      if (e.key === "Escape") {
+        onClose()
+      }
+    }
+
+    // Focus the drawer when opened
+    if (drawerRef.current) {
+      drawerRef.current.focus()
+    }
+
+    window.addEventListener("keydown", handleKeyDown)
+    return () => window.removeEventListener("keydown", handleKeyDown)
+  }, [task, onClose])
 
   useEffect(() => {
     if (!task) return
     setPath(".")
     setFile(null)
     setContent("")
+    setError(null)
   }, [task])
 
   useEffect(() => {
     if (!task) return
 
     const load = async () => {
-      const url = new URL("/file", window.location.origin)
-      url.searchParams.set("path", path)
-      const response = await fetch(url.toString())
-      const data = await response.json()
-      setItems(data)
+      setLoading(true)
+      setError(null)
+      try {
+        const url = new URL("/file", window.location.origin)
+        url.searchParams.set("path", path)
+        const response = await fetch(url.toString())
+        
+        if (!response.ok) {
+           const err = await response.json().catch(() => ({}))
+           throw new Error(err.message || `Failed to list files: ${response.statusText}`)
+        }
+        
+        const data = await response.json()
+        setItems(data)
+      } catch (e) {
+        console.error("File load error:", e)
+        setError(e.message)
+        setItems([])
+      } finally {
+        setLoading(false)
+      }
     }
 
     load()
@@ -652,51 +814,131 @@ function FileDrawer({ task, onClose }) {
       return
     }
 
-    const url = new URL("/file/content", window.location.origin)
-    url.searchParams.set("path", item.path)
-    const response = await fetch(url.toString())
-    const data = await response.json()
-    setFile(item)
-    setContent(data.content?.slice(0, 4000) ?? "")
+    setLoading(true)
+    setError(null)
+    try {
+      const url = new URL("/file/content", window.location.origin)
+      url.searchParams.set("path", item.path)
+      const response = await fetch(url.toString())
+      
+      if (!response.ok) {
+         const err = await response.json().catch(() => ({}))
+         throw new Error(err.message || `Failed to read file: ${response.statusText}`)
+      }
+
+      const data = await response.json()
+      setFile(item)
+      setContent(data.content?.slice(0, 4000) ?? "")
+    } catch (e) {
+      console.error("File content error:", e)
+      setError(e.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleNavigateUp = () => {
+     if (path === ".") return
+     const parts = path.split("/")
+     parts.pop()
+     setPath(parts.length > 0 ? parts.join("/") : ".")
   }
 
   if (!task) return null
 
   return (
-    <div className="fixed inset-0 bg-black/40 z-50 flex justify-end">
+    <div
+      className="fixed inset-0 bg-black/40 z-50 flex justify-end"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="file-drawer-title"
+      ref={drawerRef}
+      tabIndex="-1"
+    >
       <div className="bg-white w-full max-w-3xl h-full shadow-xl p-6 flex flex-col">
         <div className="flex items-center justify-between mb-4">
           <div>
-            <h3 className="text-xl font-bold">Files for {task.title}</h3>
+            <h3 id="file-drawer-title" className="text-xl font-bold">
+              Files for {task.title}
+            </h3>
             <p className="text-xs text-gray-500">Browsing: {path}</p>
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+          <button
+            onClick={onClose}
+            ref={closeButtonRef}
+            className="text-gray-400 hover:text-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded p-1"
+            aria-label="Close file browser"
+          >
             ✕
           </button>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-[1fr,1.5fr] gap-4 flex-1 overflow-hidden">
-          <div className="border border-gray-200 rounded-lg p-3 overflow-y-auto">
-            <div className="space-y-2">
-              {items.map((item) => (
-                <button
-                  key={item.absolute}
-                  onClick={() => handleOpen(item)}
-                  className="w-full text-left text-sm px-2 py-1 rounded hover:bg-gray-100"
-                >
-                  {item.type === "directory" ? "📁" : "📄"} {item.name}
-                </button>
-              ))}
-              {items.length === 0 && <div className="text-sm text-gray-500">No files found.</div>}
+        {error && (
+          <div className="bg-red-50 border-l-4 border-red-500 p-4 mb-4" role="alert">
+            <div className="flex">
+              <div className="flex-shrink-0">
+                <span className="text-red-500">⚠️</span>
+              </div>
+              <div className="ml-3">
+                <p className="text-sm text-red-700">{error}</p>
+              </div>
             </div>
           </div>
+        )}
 
-          <div className="border border-gray-200 rounded-lg p-3 overflow-y-auto">
-            {!file && <div className="text-sm text-gray-500">Select a file to preview.</div>}
+        <div className="grid grid-cols-1 md:grid-cols-[1fr,1.5fr] gap-4 flex-1 overflow-hidden">
+          <div className="border border-gray-200 rounded-lg p-3 overflow-y-auto flex flex-col">
+            <div className="flex items-center justify-between mb-2">
+               <span className="text-sm font-semibold text-gray-700">Explorer</span>
+               {path !== "." && (
+                 <button 
+                   onClick={handleNavigateUp}
+                   className="text-xs text-blue-600 hover:underline focus:outline-none focus:ring-2 focus:ring-blue-500 rounded px-1"
+                   aria-label="Go up one directory"
+                 >
+                   ⬆ Up
+                 </button>
+               )}
+            </div>
+            
+            {loading && !items.length ? (
+               <div className="text-sm text-gray-500 animate-pulse">Loading...</div>
+            ) : (
+              <div className="space-y-1" role="list" aria-label="File list">
+                {items.map((item) => (
+                  <button
+                    key={item.absolute}
+                    onClick={() => handleOpen(item)}
+                    className={`w-full text-left text-sm px-2 py-1.5 rounded flex items-center gap-2 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                       file?.absolute === item.absolute ? 'bg-blue-50 text-blue-700 ring-1 ring-blue-200' : 'hover:bg-gray-100'
+                    }`}
+                    role="listitem"
+                    aria-current={file?.absolute === item.absolute ? "true" : undefined}
+                  >
+                    <span aria-hidden="true" className="flex-shrink-0">{item.type === "directory" ? "📁" : "📄"}</span> 
+                    <span className="truncate">{item.name}</span>
+                  </button>
+                ))}
+                {items.length === 0 && !loading && <div className="text-sm text-gray-500">No files found.</div>}
+              </div>
+            )}
+          </div>
+
+          <div className="border border-gray-200 rounded-lg p-3 overflow-y-auto bg-gray-50">
+            {!file && <div className="text-sm text-gray-500 h-full flex items-center justify-center">Select a file to preview.</div>}
             {file && (
-              <div>
-                <div className="text-sm font-semibold text-gray-900 mb-2">{file.path}</div>
-                <pre className="text-xs whitespace-pre-wrap text-gray-700">{content}</pre>
+              <div className="h-full flex flex-col">
+                <div className="text-sm font-semibold text-gray-900 mb-2 pb-2 border-b border-gray-200 flex items-center justify-between">
+                   <span className="truncate" title={file.path}>{file.name}</span>
+                   <span className="text-xs text-gray-500 font-normal ml-2 flex-shrink-0">{file.path}</span>
+                </div>
+                {loading ? (
+                   <div className="text-sm text-gray-500 animate-pulse">Loading content...</div>
+                ) : (
+                   <pre className="text-xs whitespace-pre-wrap text-gray-700 font-mono flex-1 overflow-auto" tabIndex="0" aria-label={`Content of ${file.name}`}>
+                     {content}
+                   </pre>
+                )}
               </div>
             )}
           </div>
@@ -740,32 +982,47 @@ function Kanban({ tasks, onCreate, onMove, onEdit, onFiles, onWizard }) {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold">📌 Kanban Board</h2>
+          <h2 className="text-2xl font-bold text-gray-900">📌 Kanban Board</h2>
           <p className="text-gray-600">Track execution progress across agents and tasks.</p>
         </div>
-        <button onClick={onWizard} className="text-sm px-3 py-2 border border-gray-200 rounded-lg hover:bg-gray-50">
+        <button
+          onClick={onWizard}
+          className="text-sm px-3 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+        >
           Open Task Wizard
         </button>
       </div>
 
       <div className="bg-white rounded-xl border border-gray-200 shadow-lg p-6">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+          <label htmlFor="task-title" className="sr-only">
+            Task title
+          </label>
           <input
+            id="task-title"
             value={title}
             onChange={(event) => setTitle(event.target.value)}
             placeholder="Task title"
-            className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
+            className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
+          <label htmlFor="task-owner" className="sr-only">
+            Owner
+          </label>
           <input
+            id="task-owner"
             value={owner}
             onChange={(event) => setOwner(event.target.value)}
             placeholder="Owner"
-            className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
+            className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
+          <label htmlFor="task-status" className="sr-only">
+            Status
+          </label>
           <select
+            id="task-status"
             value={status}
             onChange={(event) => setStatus(event.target.value)}
-            className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
+            className="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
             {columns.map((col) => (
               <option key={col.id} value={col.id}>
@@ -773,7 +1030,10 @@ function Kanban({ tasks, onCreate, onMove, onEdit, onFiles, onWizard }) {
               </option>
             ))}
           </select>
-          <button onClick={handleAdd} className="gradient-bg text-white rounded-lg px-3 py-2 text-sm font-medium">
+          <button
+            onClick={handleAdd}
+            className="gradient-bg text-white rounded-lg px-3 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
             Add Task
           </button>
         </div>
@@ -781,45 +1041,61 @@ function Kanban({ tasks, onCreate, onMove, onEdit, onFiles, onWizard }) {
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
         {columns.map((col) => (
-          <div key={col.id} className="bg-gray-50 border border-gray-200 rounded-xl p-4">
+          <div key={col.id} className="bg-gray-50 border border-gray-200 rounded-xl p-4 flex flex-col">
             <div className="flex items-center justify-between mb-3">
               <h3 className="font-semibold text-gray-900">{col.label}</h3>
-              <span className="text-xs text-gray-500">{tasks.filter((task) => task.status === col.id).length}</span>
+              <span className="text-xs text-gray-600 bg-gray-200 px-2 py-0.5 rounded-full font-medium">
+                {tasks.filter((task) => task.status === col.id).length}
+              </span>
             </div>
-            <div className="space-y-3">
+            <div className="space-y-3" role="list" aria-label={`${col.label} tasks`}>
               {tasks
                 .filter((task) => task.status === col.id)
                 .map((task) => (
-                  <div key={task.id} className="bg-white rounded-lg border border-gray-200 p-3 shadow-sm space-y-2">
+                  <div
+                    key={task.id}
+                    role="listitem"
+                    className="bg-white rounded-lg border border-gray-200 p-3 shadow-sm space-y-2 hover:shadow-md transition-shadow"
+                  >
                     <div>
                       <div className="text-sm font-medium text-gray-900">{task.title}</div>
-                      <div className="text-xs text-gray-500">
-                        {task.category ?? "General"} · {task.priority ?? "Normal"} · {task.complexity ?? "Medium"}
+                      <div className="text-xs text-gray-500 mt-1 flex flex-wrap gap-1">
+                        <span className="bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded">
+                          {task.category ?? "General"}
+                        </span>
+                        <span>·</span>
+                        <span>{task.priority ?? "Normal"}</span>
+                        <span>·</span>
+                        <span>{task.complexity ?? "Medium"}</span>
                       </div>
                     </div>
-                    <div className="text-xs text-gray-500">Owner: {task.owner}</div>
-                    <div className="flex flex-wrap items-center gap-2">
+                    {task.owner && <div className="text-xs text-gray-500">Owner: {task.owner}</div>}
+                    <div className="flex flex-wrap items-center gap-2 pt-1">
                       <button
                         onClick={() => handleMove(task.id, "back")}
-                        className="text-xs px-2 py-1 rounded border border-gray-200 hover:bg-gray-100"
+                        className="text-xs px-2 py-1 rounded border border-gray-200 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        aria-label="Move task backward"
+                        title="Move backward"
                       >
-                        ◀ Move
+                        ◀
                       </button>
                       <button
                         onClick={() => handleMove(task.id, "forward")}
-                        className="text-xs px-2 py-1 rounded border border-gray-200 hover:bg-gray-100"
+                        className="text-xs px-2 py-1 rounded border border-gray-200 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        aria-label="Move task forward"
+                        title="Move forward"
                       >
-                        Move ▶
+                        ▶
                       </button>
                       <button
                         onClick={() => onEdit(task)}
-                        className="text-xs px-2 py-1 rounded border border-blue-200 text-blue-700 hover:bg-blue-50"
+                        className="text-xs px-2 py-1 rounded border border-blue-200 text-blue-700 hover:bg-blue-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
                       >
                         Edit
                       </button>
                       <button
                         onClick={() => onFiles(task)}
-                        className="text-xs px-2 py-1 rounded border border-gray-200 hover:bg-gray-100"
+                        className="text-xs px-2 py-1 rounded border border-gray-200 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
                       >
                         Files
                       </button>
@@ -857,26 +1133,29 @@ function Roadmap({ roadmap, onCreate, onToggle, onExport, onGenerate, onViewLogs
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-bold">🗺️ Roadmap</h2>
+          <h2 className="text-2xl font-bold text-gray-900">🗺️ Roadmap</h2>
           <p className="text-gray-600">Plan releases and translate ideas into milestones.</p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
           <div className="text-right">
             <div className="text-sm text-gray-500">Overall progress</div>
-            <div className="text-xl font-bold text-green-600">{progress}%</div>
+            <div className="text-xl font-bold text-green-600" aria-label={`${progress}% completed`}>
+              {progress}%
+            </div>
           </div>
-          <label className="flex items-center gap-2 text-xs text-gray-600">
+          <label className="flex items-center gap-2 text-xs text-gray-600 cursor-pointer">
             <input
               type="checkbox"
               checked={withCompetitors}
               onChange={(event) => setWithCompetitors(event.target.checked)}
+              className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
             />
             Include competitor analysis
           </label>
           <button
             onClick={() => setGenOpen(true)}
             disabled={generating}
-            className={`text-xs px-3 py-2 border border-gray-200 rounded-lg ${
+            className={`text-xs px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
               generating ? "opacity-60 cursor-not-allowed" : "hover:bg-gray-50"
             }`}
           >
@@ -887,7 +1166,7 @@ function Roadmap({ roadmap, onCreate, onToggle, onExport, onGenerate, onViewLogs
               <button
                 key={format}
                 onClick={() => onExport(format)}
-                className="text-xs px-3 py-2 border border-gray-200 rounded-lg hover:bg-gray-50"
+                className="text-xs px-3 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 Export {format.toUpperCase()}
               </button>
@@ -898,16 +1177,24 @@ function Roadmap({ roadmap, onCreate, onToggle, onExport, onGenerate, onViewLogs
 
       <div className="bg-white rounded-xl border border-gray-200 shadow-lg p-6">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <label htmlFor="feature-name" className="sr-only">
+            Feature name
+          </label>
           <input
+            id="feature-name"
             value={title}
             onChange={(event) => setTitle(event.target.value)}
             placeholder="Feature name"
-            className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
+            className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
+          <label htmlFor="feature-phase" className="sr-only">
+            Phase
+          </label>
           <select
+            id="feature-phase"
             value={phase}
             onChange={(event) => setPhase(event.target.value)}
-            className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
+            className="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
             {roadmap.phases.map((item) => (
               <option key={item} value={item}>
@@ -915,7 +1202,10 @@ function Roadmap({ roadmap, onCreate, onToggle, onExport, onGenerate, onViewLogs
               </option>
             ))}
           </select>
-          <button onClick={handleAdd} className="gradient-bg text-white rounded-lg px-3 py-2 text-sm font-medium">
+          <button
+            onClick={handleAdd}
+            className="gradient-bg text-white rounded-lg px-3 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
             Add Feature
           </button>
         </div>
@@ -926,22 +1216,22 @@ function Roadmap({ roadmap, onCreate, onToggle, onExport, onGenerate, onViewLogs
           <div key={item} className="bg-gray-50 border border-gray-200 rounded-xl p-4">
             <div className="flex items-center justify-between mb-3">
               <h3 className="font-semibold text-gray-900">{item}</h3>
-              <span className="text-xs text-gray-500">
+              <span className="text-xs text-gray-600 bg-gray-200 px-2 py-0.5 rounded-full font-medium">
                 {roadmap.features.filter((feature) => feature.phase === item).length}
               </span>
             </div>
-            <div className="space-y-3">
+            <div className="space-y-3" role="list" aria-label={`${item} features`}>
               {roadmap.features
                 .filter((feature) => feature.phase === item)
                 .map((feature) => (
-                  <div key={feature.id} className="bg-white rounded-lg border border-gray-200 p-3 shadow-sm">
+                  <div key={feature.id} role="listitem" className="bg-white rounded-lg border border-gray-200 p-3 shadow-sm">
                     <div className="flex items-center justify-between">
                       <div>
                         <div className="text-sm font-medium text-gray-900">{feature.title}</div>
-                        <div className="text-xs text-gray-500">Owner: {feature.owner}</div>
+                        {feature.owner && <div className="text-xs text-gray-500">Owner: {feature.owner}</div>}
                       </div>
                       <span
-                        className={`text-xs px-2 py-1 rounded-full ${
+                        className={`text-xs px-2 py-1 rounded-full font-medium ${
                           feature.status === "done"
                             ? "bg-green-100 text-green-700"
                             : feature.status === "in_progress"
@@ -954,7 +1244,7 @@ function Roadmap({ roadmap, onCreate, onToggle, onExport, onGenerate, onViewLogs
                     </div>
                     <button
                       onClick={() => onToggle(feature.id, feature.status === "done" ? "planned" : "done")}
-                      className="mt-3 text-xs px-2 py-1 rounded border border-gray-200 hover:bg-gray-100"
+                      className="mt-3 text-xs px-2 py-1 rounded border border-gray-200 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
                     >
                       {feature.status === "done" ? "Reopen" : "Mark Done"}
                     </button>
@@ -969,16 +1259,21 @@ function Roadmap({ roadmap, onCreate, onToggle, onExport, onGenerate, onViewLogs
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 space-y-4">
             <div className="flex items-center justify-between">
-              <h3 className="text-lg font-semibold">Generate Roadmap</h3>
-              <button onClick={() => setGenOpen(false)} className="text-gray-400 hover:text-gray-600">
+              <h3 className="text-lg font-semibold text-gray-900">Generate Roadmap</h3>
+              <button
+                onClick={() => setGenOpen(false)}
+                className="text-gray-400 hover:text-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded p-1"
+                aria-label="Close dialog"
+              >
                 ✕
               </button>
             </div>
-            <label className="flex items-center gap-2 text-sm text-gray-600">
+            <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
               <input
                 type="checkbox"
                 checked={withCompetitors}
                 onChange={(event) => setWithCompetitors(event.target.checked)}
+                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
               />
               Include competitor analysis
             </label>
@@ -986,7 +1281,10 @@ function Roadmap({ roadmap, onCreate, onToggle, onExport, onGenerate, onViewLogs
               Generate an AI-powered roadmap with phases, milestones, and optional competitor insights.
             </p>
             <div className="flex items-center justify-end gap-2">
-              <button onClick={() => setGenOpen(false)} className="text-sm px-3 py-2 border border-gray-200 rounded-lg">
+              <button
+                onClick={() => setGenOpen(false)}
+                className="text-sm px-3 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
                 Cancel
               </button>
               {generating && (
@@ -995,7 +1293,7 @@ function Roadmap({ roadmap, onCreate, onToggle, onExport, onGenerate, onViewLogs
                     setGenOpen(false)
                     onViewLogs()
                   }}
-                  className="text-sm px-3 py-2 border border-gray-200 rounded-lg hover:bg-gray-50"
+                  className="text-sm px-3 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   View Logs
                 </button>
@@ -1006,7 +1304,7 @@ function Roadmap({ roadmap, onCreate, onToggle, onExport, onGenerate, onViewLogs
                   setGenOpen(false)
                 }}
                 disabled={generating}
-                className={`gradient-bg text-white px-4 py-2 rounded-lg ${
+                className={`gradient-bg text-white px-4 py-2 rounded-lg font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 ${
                   generating ? "opacity-60 cursor-not-allowed" : "hover:opacity-90"
                 }`}
               >
@@ -1087,14 +1385,14 @@ function Ideation({ ideas, onCreate, onStatus, onConvert, onGenerate, onViewLogs
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-2xl font-bold">💡 Ideation</h2>
+          <h2 className="text-2xl font-bold text-gray-900">💡 Ideation</h2>
           <p className="text-gray-600">Capture ideas, convert to tasks, and manage signals.</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <button
             onClick={() => setGenOpen(true)}
             disabled={generating}
-            className={`text-sm px-3 py-2 border border-gray-200 rounded-lg ${
+            className={`text-sm px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
               generating ? "opacity-60 cursor-not-allowed" : "hover:bg-gray-50"
             }`}
           >
@@ -1102,7 +1400,8 @@ function Ideation({ ideas, onCreate, onStatus, onConvert, onGenerate, onViewLogs
           </button>
           <button
             onClick={() => setShowArchived(!showArchived)}
-            className="text-sm px-3 py-2 border border-gray-200 rounded-lg hover:bg-gray-50"
+            className="text-sm px-3 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            aria-pressed={showArchived}
           >
             {showArchived ? "Hide Archived" : "Show Archived"}
           </button>
@@ -1111,16 +1410,24 @@ function Ideation({ ideas, onCreate, onStatus, onConvert, onGenerate, onViewLogs
 
       <div className="bg-white rounded-xl border border-gray-200 shadow-lg p-6">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <label htmlFor="idea-title" className="sr-only">
+            Idea title
+          </label>
           <input
+            id="idea-title"
             value={title}
             onChange={(event) => setTitle(event.target.value)}
             placeholder="Idea title"
-            className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
+            className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
+          <label htmlFor="idea-type" className="sr-only">
+            Type
+          </label>
           <select
+            id="idea-type"
             value={type}
             onChange={(event) => setType(event.target.value)}
-            className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
+            className="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
             {types.map((item) => (
               <option key={item.id} value={item.id}>
@@ -1128,17 +1435,22 @@ function Ideation({ ideas, onCreate, onStatus, onConvert, onGenerate, onViewLogs
               </option>
             ))}
           </select>
-          <button onClick={handleAdd} className="gradient-bg text-white rounded-lg px-3 py-2 text-sm font-medium">
+          <button
+            onClick={handleAdd}
+            className="gradient-bg text-white rounded-lg px-3 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
             Add Idea
           </button>
         </div>
       </div>
 
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap gap-2" role="tablist" aria-label="Idea filters">
         <button
+          role="tab"
+          aria-selected={activeType === "all"}
           onClick={() => setActiveType("all")}
-          className={`px-3 py-2 rounded-lg text-sm ${
-            activeType === "all" ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-700"
+          className={`px-3 py-2 rounded-lg text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+            activeType === "all" ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-700 hover:bg-gray-200"
           }`}
         >
           All Ideas
@@ -1146,9 +1458,11 @@ function Ideation({ ideas, onCreate, onStatus, onConvert, onGenerate, onViewLogs
         {types.map((item) => (
           <button
             key={item.id}
+            role="tab"
+            aria-selected={activeType === item.id}
             onClick={() => setActiveType(item.id)}
-            className={`px-3 py-2 rounded-lg text-sm ${
-              activeType === item.id ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-700"
+            className={`px-3 py-2 rounded-lg text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+              activeType === item.id ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-700 hover:bg-gray-200"
             }`}
           >
             {item.label}
@@ -1156,19 +1470,23 @@ function Ideation({ ideas, onCreate, onStatus, onConvert, onGenerate, onViewLogs
         ))}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4" role="list">
         {visible.map((idea) => (
-          <div key={idea.id} className="bg-white rounded-xl border border-gray-200 shadow-lg p-4">
+          <div
+            key={idea.id}
+            role="listitem"
+            className="bg-white rounded-xl border border-gray-200 shadow-lg p-4 hover:shadow-xl transition-shadow"
+          >
             <div className="flex items-start justify-between">
               <div>
                 <div className="text-sm font-semibold text-gray-900">{idea.title}</div>
                 <div className="text-xs text-gray-500 mt-1">
                   Type: {idea.type} · Impact: {idea.impact}
                 </div>
-                {idea.taskID && <div className="text-xs text-blue-600 mt-1">Task: {idea.taskID}</div>}
+                {idea.taskID && <div className="text-xs text-blue-600 mt-1 font-medium">Task: {idea.taskID}</div>}
               </div>
               <span
-                className={`text-xs px-2 py-1 rounded-full ${
+                className={`text-xs px-2 py-1 rounded-full font-medium ${
                   idea.status === "archived"
                     ? "bg-gray-200 text-gray-600"
                     : idea.status === "dismissed"
@@ -1184,30 +1502,32 @@ function Ideation({ ideas, onCreate, onStatus, onConvert, onGenerate, onViewLogs
             <div className="flex flex-wrap items-center gap-2 mt-4">
               <button
                 onClick={() => onStatus(idea.id, "active")}
-                className="text-xs px-2 py-1 rounded border border-gray-200 hover:bg-gray-100"
+                className="text-xs px-2 py-1 rounded border border-gray-200 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 Keep
               </button>
               <button
                 onClick={() => onStatus(idea.id, "dismissed")}
-                className="text-xs px-2 py-1 rounded border border-gray-200 hover:bg-gray-100"
+                className="text-xs px-2 py-1 rounded border border-gray-200 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 Dismiss
               </button>
               <button
                 onClick={() => onStatus(idea.id, "archived")}
-                className="text-xs px-2 py-1 rounded border border-gray-200 hover:bg-gray-100"
+                className="text-xs px-2 py-1 rounded border border-gray-200 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 Archive
               </button>
               <button
                 onClick={() => onConvert(idea.id)}
-                className="text-xs px-2 py-1 rounded border border-blue-200 text-blue-700 hover:bg-blue-50"
+                className="text-xs px-2 py-1 rounded border border-blue-200 text-blue-700 hover:bg-blue-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 Convert to Task
               </button>
             </div>
-            <div className="mt-3 text-xs text-gray-500">{types.find((item) => item.id === idea.type)?.hint}</div>
+            <div className="mt-3 text-xs text-gray-500 italic">
+              {types.find((item) => item.id === idea.type)?.hint}
+            </div>
           </div>
         ))}
       </div>
@@ -1216,32 +1536,45 @@ function Ideation({ ideas, onCreate, onStatus, onConvert, onGenerate, onViewLogs
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-lg p-6 space-y-4">
             <div className="flex items-center justify-between">
-              <h3 className="text-lg font-semibold">Generate Ideas</h3>
-              <button onClick={() => setGenOpen(false)} className="text-gray-400 hover:text-gray-600">
+              <h3 className="text-lg font-semibold text-gray-900">Generate Ideas</h3>
+              <button
+                onClick={() => setGenOpen(false)}
+                className="text-gray-400 hover:text-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded p-1"
+                aria-label="Close dialog"
+              >
                 ✕
               </button>
             </div>
             <div className="text-sm text-gray-600">Select idea types to generate.</div>
             <div className="flex flex-wrap gap-2 text-xs text-gray-600">
               {types.map((item) => (
-                <label key={item.id} className="flex items-center gap-2 bg-gray-50 px-3 py-2 rounded-lg">
+                <label key={item.id} className="flex items-center gap-2 bg-gray-50 px-3 py-2 rounded-lg cursor-pointer">
                   <input
                     type="checkbox"
                     checked={selectedTypes.includes(item.id)}
                     onChange={() => toggleType(item.id)}
+                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                   />
                   {item.label}
                 </label>
               ))}
             </div>
+            <label htmlFor="max-ideas" className="sr-only">
+              Max ideas
+            </label>
             <input
+              id="max-ideas"
               value={maxIdeas}
               onChange={(event) => setMaxIdeas(event.target.value)}
               placeholder="Max ideas"
-              className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
+              className="border border-gray-300 rounded-lg px-3 py-2 text-sm w-24 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              type="number"
             />
             <div className="flex items-center justify-end gap-2">
-              <button onClick={() => setGenOpen(false)} className="text-sm px-3 py-2 border border-gray-200 rounded-lg">
+              <button
+                onClick={() => setGenOpen(false)}
+                className="text-sm px-3 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
                 Cancel
               </button>
               {generating && (
@@ -1250,7 +1583,7 @@ function Ideation({ ideas, onCreate, onStatus, onConvert, onGenerate, onViewLogs
                     setGenOpen(false)
                     onViewLogs()
                   }}
-                  className="text-sm px-3 py-2 border border-gray-200 rounded-lg hover:bg-gray-50"
+                  className="text-sm px-3 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   View Logs
                 </button>
@@ -1261,7 +1594,7 @@ function Ideation({ ideas, onCreate, onStatus, onConvert, onGenerate, onViewLogs
                   setGenOpen(false)
                 }}
                 disabled={generating}
-                className={`gradient-bg text-white px-4 py-2 rounded-lg ${
+                className={`gradient-bg text-white px-4 py-2 rounded-lg font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 ${
                   generating ? "opacity-60 cursor-not-allowed" : "hover:opacity-90"
                 }`}
               >
@@ -1298,23 +1631,29 @@ function Context({ memories, indexItems, onAddMemory, onSearchIndex, onSearchMem
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-2xl font-bold">📁 Context Manager</h2>
+        <h2 className="text-2xl font-bold text-gray-900">📁 Context Manager</h2>
         <p className="text-gray-600">Browse indexed knowledge and team memory.</p>
       </div>
 
-      <div className="flex gap-3">
+      <div role="tablist" className="flex gap-3">
         <button
+          role="tab"
+          aria-selected={activeTab === "index"}
+          aria-controls="panel-index"
           onClick={() => setActiveTab("index")}
-          className={`px-3 py-2 rounded-lg text-sm ${
-            activeTab === "index" ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-700"
+          className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+            activeTab === "index" ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-700 hover:bg-gray-200"
           }`}
         >
           Project Index
         </button>
         <button
+          role="tab"
+          aria-selected={activeTab === "memories"}
+          aria-controls="panel-memories"
           onClick={() => setActiveTab("memories")}
-          className={`px-3 py-2 rounded-lg text-sm ${
-            activeTab === "memories" ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-700"
+          className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+            activeTab === "memories" ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-700 hover:bg-gray-200"
           }`}
         >
           Memories
@@ -1322,66 +1661,101 @@ function Context({ memories, indexItems, onAddMemory, onSearchIndex, onSearchMem
       </div>
 
       {activeTab === "index" && (
-        <div className="bg-white rounded-xl border border-gray-200 shadow-lg p-6 space-y-4">
+        <div
+          id="panel-index"
+          role="tabpanel"
+          className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 space-y-4"
+        >
           <div className="flex items-center gap-3">
+            <label htmlFor="index-search" className="sr-only">
+              Search index
+            </label>
             <input
+              id="index-search"
               value={search}
               onChange={(event) => setSearch(event.target.value)}
-              placeholder="Search index"
-              className="border border-gray-300 rounded-lg px-3 py-2 text-sm flex-1"
+              placeholder="Search index..."
+              className="border border-gray-300 rounded-lg px-3 py-2 text-sm flex-1 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             />
             <button
               onClick={() => onSearchIndex(search)}
-              className="border border-gray-200 rounded-lg px-3 py-2 text-sm hover:bg-gray-50"
+              aria-label="Refresh index search"
+              className="border border-gray-200 rounded-lg px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               Refresh
             </button>
           </div>
-          <div className="space-y-3">
+          <div className="space-y-3" role="list">
             {indexItems.map((item) => (
-              <div key={item} className="flex items-center justify-between border border-gray-200 rounded-lg p-3">
+              <div
+                key={item}
+                role="listitem"
+                className="flex items-center justify-between border border-gray-200 rounded-lg p-3 hover:bg-gray-50 transition-colors"
+              >
                 <div>
                   <div className="text-sm font-semibold text-gray-900">{item}</div>
                   <div className="text-xs text-gray-500">Indexed file</div>
                 </div>
-                <div className="text-xs text-gray-500">Ready</div>
+                <div className="text-xs text-green-600 font-medium bg-green-50 px-2 py-1 rounded">Ready</div>
               </div>
             ))}
-            {indexItems.length === 0 && <div className="text-sm text-gray-500">No index results yet.</div>}
+            {indexItems.length === 0 && <div className="text-sm text-gray-500 italic">No index results yet.</div>}
           </div>
         </div>
       )}
 
       {activeTab === "memories" && (
-        <div className="bg-white rounded-xl border border-gray-200 shadow-lg p-6 space-y-4">
+        <div
+          id="panel-memories"
+          role="tabpanel"
+          className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 space-y-4"
+        >
           <div className="grid grid-cols-1 md:grid-cols-[1fr,auto] gap-3">
+            <label htmlFor="memory-input" className="sr-only">
+              Add memory note
+            </label>
             <input
+              id="memory-input"
               value={memoryInput}
               onChange={(event) => setMemoryInput(event.target.value)}
-              placeholder="Add memory note"
-              className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
+              placeholder="Add memory note..."
+              className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              onKeyDown={(e) => e.key === "Enter" && handleAdd()}
             />
-            <button onClick={handleAdd} className="gradient-bg text-white rounded-lg px-3 py-2 text-sm font-medium">
+            <button
+              onClick={handleAdd}
+              className="gradient-bg text-white rounded-lg px-4 py-2 text-sm font-medium shadow-sm hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1"
+            >
               Add Memory
             </button>
           </div>
+          <label htmlFor="memory-search" className="sr-only">
+            Search memories
+          </label>
           <input
+            id="memory-search"
             value={memorySearch}
             onChange={(event) => setMemorySearch(event.target.value)}
-            placeholder="Search memories"
-            className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
+            placeholder="Search memories..."
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
           />
-          <div className="space-y-3">
+          <div className="space-y-3" role="list">
             {memories.map((item) => (
-              <div key={item.id} className="flex items-center justify-between border border-gray-200 rounded-lg p-3">
+              <div
+                key={item.id}
+                role="listitem"
+                className="flex items-center justify-between border border-gray-200 rounded-lg p-3 hover:bg-gray-50 transition-colors"
+              >
                 <div>
                   <div className="text-sm font-semibold text-gray-900">{item.title}</div>
                   <div className="text-xs text-gray-500">Tag: {item.tag}</div>
                 </div>
-                <span className="text-xs text-gray-400">{new Date(item.createdAt).toLocaleString()}</span>
+                <span className="text-xs text-gray-400" aria-label={`Created at ${new Date(item.createdAt).toLocaleString()}`}>
+                  {new Date(item.createdAt).toLocaleString()}
+                </span>
               </div>
             ))}
-            {memories.length === 0 && <div className="text-sm text-gray-500">No memories yet.</div>}
+            {memories.length === 0 && <div className="text-sm text-gray-500 italic">No memories yet.</div>}
           </div>
         </div>
       )}
@@ -1476,35 +1850,44 @@ function Insights({
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-2xl font-bold">💬 Insights Workspace</h2>
+          <h2 className="text-2xl font-bold text-gray-900">💬 Insights Workspace</h2>
           <p className="text-gray-600">Multi-session chat, model selection, and competitive notes.</p>
         </div>
         <button
           onClick={() => onGenerateInsight("What is the architecture of this project?")}
-          className="text-sm px-3 py-2 border border-gray-200 rounded-lg hover:bg-gray-50"
+          className="text-sm px-3 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500"
         >
           Generate Insights
         </button>
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-[260px,1fr,300px] gap-6">
-        <div className="bg-white rounded-xl border border-gray-200 shadow-lg p-4 space-y-3">
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 space-y-3">
           <div className="flex items-center justify-between">
-            <h3 className="text-sm font-semibold">Sessions</h3>
-            <button onClick={onCreateSession} className="text-xs text-blue-600 hover:underline">
+            <h3 className="text-sm font-semibold text-gray-900">Sessions</h3>
+            <button
+              onClick={onCreateSession}
+              className="text-xs text-blue-600 hover:underline focus:outline-none focus:ring-2 focus:ring-blue-500 rounded px-1"
+              aria-label="Create new session"
+            >
               New
             </button>
           </div>
-          <div className="space-y-2">
+          <div className="space-y-2" role="list" aria-label="Chat sessions">
             {sessions.map((session) => (
               <div
                 key={session.id}
-                className={`flex items-center gap-2 w-full p-2 rounded-lg border text-sm ${
-                  activeSession === session.id ? "border-blue-500 bg-blue-50" : "border-gray-200"
+                role="listitem"
+                className={`flex items-center gap-2 w-full p-2 rounded-lg border text-sm transition-colors ${
+                  activeSession === session.id ? "border-blue-500 bg-blue-50" : "border-gray-200 hover:bg-gray-50"
                 }`}
               >
-                <button onClick={() => onSelectSession(session.id)} className="flex-1 text-left">
-                  <div className="font-medium text-gray-900">{session.title}</div>
+                <button
+                  onClick={() => onSelectSession(session.id)}
+                  className="flex-1 text-left focus:outline-none focus:underline"
+                  aria-current={activeSession === session.id ? "true" : "false"}
+                >
+                  <div className="font-medium text-gray-900 truncate">{session.title}</div>
                   <div className="text-xs text-gray-500">{statusMap?.[session.id]?.type ?? "idle"}</div>
                 </button>
                 <button
@@ -1514,26 +1897,30 @@ function Insights({
                     setRenameTitle(session.title)
                     setRenameOpen(true)
                   }}
-                  className="text-xs text-gray-400 hover:text-blue-600"
+                  className="text-xs text-gray-400 hover:text-blue-600 focus:outline-none focus:text-blue-600 p-1"
+                  aria-label={`Rename session ${session.title}`}
                 >
                   Rename
                 </button>
               </div>
             ))}
-            {sessions.length === 0 && <div className="text-xs text-gray-500">No sessions yet.</div>}
+            {sessions.length === 0 && <div className="text-xs text-gray-500 italic">No sessions yet.</div>}
           </div>
         </div>
 
-        <div className="bg-white rounded-xl border border-gray-200 shadow-lg p-4 flex flex-col">
-          <div className="flex items-center justify-between mb-3">
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 flex flex-col h-[600px]">
+          <div className="flex items-center justify-between mb-3 shrink-0">
             <div>
-              <div className="text-sm font-semibold">Chat</div>
+              <div className="text-sm font-semibold text-gray-900">Chat</div>
               <div className="text-xs text-gray-500">{selectedText}</div>
             </div>
             <div className="flex items-center gap-2 text-xs">
               <button
                 onClick={onToggleLive}
-                className={`px-2 py-1 rounded-lg border ${live ? "border-blue-500 text-blue-600" : "border-gray-200 text-gray-400"}`}
+                aria-pressed={live}
+                className={`px-2 py-1 rounded-lg border focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                  live ? "border-blue-500 text-blue-600 bg-blue-50" : "border-gray-200 text-gray-400 hover:bg-gray-50"
+                }`}
               >
                 {live ? "Live" : "Paused"}
               </button>
@@ -1541,41 +1928,65 @@ function Insights({
             </div>
           </div>
 
-          <div className="flex-1 overflow-y-auto space-y-3">
+          <div
+            className="flex-1 overflow-y-auto space-y-3 min-h-0 p-2 scroll-smooth"
+            role="log"
+            aria-label="Chat history"
+            aria-live="polite"
+          >
             {messageItems.map((item) => (
               <div
                 key={item.id}
-                className={`rounded-lg p-3 text-sm ${item.role === "user" ? "bg-blue-50" : "bg-gray-50"}`}
+                className={`rounded-lg p-3 text-sm max-w-[90%] ${
+                  item.role === "user" ? "bg-blue-50 ml-auto border border-blue-100" : "bg-gray-50 border border-gray-100"
+                }`}
               >
-                <div className="text-xs text-gray-500 mb-1">{item.role}</div>
-                <div className="whitespace-pre-wrap text-gray-800">{item.text || "(no text)"}</div>
+                <div className="text-xs text-gray-500 mb-1 uppercase tracking-wider">{item.role}</div>
+                <div className="whitespace-pre-wrap text-gray-800 leading-relaxed">{item.text || "(no text)"}</div>
               </div>
             ))}
-            {messageItems.length === 0 && <div className="text-sm text-gray-500">No messages yet.</div>}
+            {messageItems.length === 0 && (
+              <div className="flex flex-col items-center justify-center h-full text-gray-400 space-y-2">
+                <span className="text-2xl">💬</span>
+                <span className="text-sm">Start a conversation</span>
+              </div>
+            )}
           </div>
-          <div className="mt-4 space-y-3">
+          <div className="mt-4 space-y-3 shrink-0">
             <div className="flex flex-wrap gap-2">
               {quickPrompts.map((item) => (
                 <button
                   key={item}
                   onClick={() => onPromptChange(item)}
-                  className="text-xs px-2 py-1 border border-gray-200 rounded-lg hover:bg-gray-50"
+                  className="text-xs px-2 py-1 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   {item}
                 </button>
               ))}
             </div>
+            <label htmlFor="chat-prompt" className="sr-only">
+              Chat prompt
+            </label>
             <textarea
+              id="chat-prompt"
               value={prompt}
               onChange={(event) => onPromptChange(event.target.value)}
               placeholder="Ask about your codebase..."
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm h-24"
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm h-24 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault()
+                  if (prompt.trim() && !sending && activeSession) onSendPrompt()
+                }
+              }}
             />
             <button
               onClick={onSendPrompt}
               disabled={!prompt.trim() || sending || !activeSession}
-              className={`w-full rounded-lg px-3 py-2 text-sm font-medium ${
-                !prompt.trim() || sending || !activeSession ? "bg-gray-200 text-gray-500" : "gradient-bg text-white"
+              className={`w-full rounded-lg px-3 py-2 text-sm font-medium transition-all focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                !prompt.trim() || sending || !activeSession
+                  ? "bg-gray-200 text-gray-500 cursor-not-allowed"
+                  : "gradient-bg text-white shadow-sm hover:opacity-90"
               }`}
             >
               {sending ? "Sending..." : "Send Prompt"}
@@ -1584,14 +1995,17 @@ function Insights({
         </div>
 
         <div className="space-y-4">
-          <div className="bg-white rounded-xl border border-gray-200 shadow-lg p-4 space-y-3">
-            <h3 className="text-sm font-semibold">Execution Settings</h3>
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 space-y-3">
+            <h3 className="text-sm font-semibold text-gray-900">Execution Settings</h3>
             <div className="space-y-2">
-              <label className="text-xs text-gray-500">Agent</label>
+              <label htmlFor="agent-select" className="text-xs text-gray-500 font-medium">
+                Agent
+              </label>
               <select
+                id="agent-select"
                 value={selectedAgent}
                 onChange={(event) => onSelectAgent(event.target.value)}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
               >
                 <option value="">Default</option>
                 {agents.map((agent) => (
@@ -1602,11 +2016,14 @@ function Insights({
               </select>
             </div>
             <div className="space-y-2">
-              <label className="text-xs text-gray-500">Model</label>
+              <label htmlFor="model-select" className="text-xs text-gray-500 font-medium">
+                Model
+              </label>
               <select
+                id="model-select"
                 value={selectedModel}
                 onChange={(event) => onSelectModel(event.target.value)}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
               >
                 <option value="">Default</option>
                 {models.map((model) => (
@@ -1618,72 +2035,108 @@ function Insights({
             </div>
           </div>
 
-          <div className="bg-white rounded-xl border border-gray-200 shadow-lg p-4 space-y-3">
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 space-y-3">
             <div className="flex items-center justify-between">
-              <h3 className="text-sm font-semibold">Competitor Analysis</h3>
-              <button onClick={() => setDialog(true)} className="text-xs text-blue-600 hover:underline">
+              <h3 className="text-sm font-semibold text-gray-900">Competitor Analysis</h3>
+              <button
+                onClick={() => setDialog(true)}
+                className="text-xs text-blue-600 hover:underline focus:outline-none focus:ring-2 focus:ring-blue-500 rounded px-1"
+              >
                 Add
               </button>
             </div>
-            <div className="space-y-3">
+            <div className="space-y-3" role="list">
               {competitors.map((item) => (
-                <div key={item.id} className="text-sm text-gray-700 flex items-start justify-between gap-3">
+                <div
+                  key={item.id}
+                  role="listitem"
+                  className="text-sm text-gray-700 flex items-start justify-between gap-3 p-2 rounded hover:bg-gray-50 transition-colors"
+                >
                   <div>
                     <div className="font-medium">{item.name}</div>
                     <div className="text-xs text-gray-500">{item.note || "No notes"}</div>
                   </div>
                   <button
                     onClick={() => onRemoveCompetitor(item.id)}
-                    className="text-xs text-gray-400 hover:text-red-500"
+                    className="text-xs text-gray-400 hover:text-red-500 focus:outline-none focus:text-red-500 p-1"
+                    aria-label={`Remove competitor ${item.name}`}
                   >
                     Remove
                   </button>
                 </div>
               ))}
-              {competitors.length === 0 && <div className="text-xs text-gray-500">No competitor notes yet.</div>}
+              {competitors.length === 0 && <div className="text-xs text-gray-500 italic">No competitor notes yet.</div>}
             </div>
           </div>
 
-          <div className="bg-white rounded-xl border border-gray-200 shadow-lg p-4 space-y-2">
-            <h3 className="text-sm font-semibold">Task Suggestions</h3>
-            <div className="space-y-2">
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 space-y-2">
+            <h3 className="text-sm font-semibold text-gray-900">Task Suggestions</h3>
+            <div className="space-y-2" role="list">
               {suggestions.map((item, index) => (
-                <div key={`${item}-${index}`} className="text-xs text-gray-600">
-                  • {item}
+                <div key={`${item}-${index}`} role="listitem" className="text-xs text-gray-600 flex items-start gap-2">
+                  <span aria-hidden="true">•</span>
+                  <span>{item}</span>
                 </div>
               ))}
-              {suggestions.length === 0 && <div className="text-xs text-gray-500">No suggestions yet.</div>}
+              {suggestions.length === 0 && <div className="text-xs text-gray-500 italic">No suggestions yet.</div>}
             </div>
           </div>
         </div>
       </div>
 
       {dialog && (
-        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+        <div
+          className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4 backdrop-blur-sm"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="add-competitor-title"
+        >
           <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 space-y-4">
             <div className="flex items-center justify-between">
-              <h3 className="text-lg font-semibold">Add Competitor</h3>
-              <button onClick={() => setDialog(false)} className="text-gray-400 hover:text-gray-600">
+              <h3 id="add-competitor-title" className="text-lg font-semibold text-gray-900">
+                Add Competitor
+              </h3>
+              <button
+                onClick={() => setDialog(false)}
+                className="text-gray-400 hover:text-gray-600 focus:outline-none focus:ring-2 focus:ring-gray-500 rounded-lg p-1"
+                aria-label="Close dialog"
+              >
                 ✕
               </button>
             </div>
-            <input
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-              placeholder="Competitor name"
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-            />
-            <textarea
-              value={note}
-              onChange={(event) => setNote(event.target.value)}
-              placeholder="Notes"
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm h-24"
-            />
+            <div className="space-y-3">
+              <label htmlFor="comp-name" className="sr-only">
+                Competitor name
+              </label>
+              <input
+                id="comp-name"
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+                placeholder="Competitor name"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <label htmlFor="comp-notes" className="sr-only">
+                Notes
+              </label>
+              <textarea
+                id="comp-notes"
+                value={note}
+                onChange={(event) => setNote(event.target.value)}
+                placeholder="Notes"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm h-24 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
             <div className="flex items-center justify-end gap-2">
-              <button onClick={() => setDialog(false)} className="text-sm px-3 py-2 border border-gray-200 rounded-lg">
+              <button
+                onClick={() => setDialog(false)}
+                className="text-sm px-3 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-gray-500"
+              >
                 Cancel
               </button>
-              <button onClick={handleSaveCompetitor} className="gradient-bg text-white px-4 py-2 rounded-lg">
+              <button
+                onClick={handleSaveCompetitor}
+                className="gradient-bg text-white px-4 py-2 rounded-lg text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1"
+              >
                 Save
               </button>
             </div>
@@ -1691,28 +2144,47 @@ function Insights({
         </div>
       )}
       {renameOpen && (
-        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+        <div
+          className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4 backdrop-blur-sm"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="rename-session-title"
+        >
           <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 space-y-4">
             <div className="flex items-center justify-between">
-              <h3 className="text-lg font-semibold">Rename Session</h3>
-              <button onClick={() => setRenameOpen(false)} className="text-gray-400 hover:text-gray-600">
+              <h3 id="rename-session-title" className="text-lg font-semibold text-gray-900">
+                Rename Session
+              </h3>
+              <button
+                onClick={() => setRenameOpen(false)}
+                className="text-gray-400 hover:text-gray-600 focus:outline-none focus:ring-2 focus:ring-gray-500 rounded-lg p-1"
+                aria-label="Close dialog"
+              >
                 ✕
               </button>
             </div>
+            <label htmlFor="session-title-input" className="sr-only">
+              Session title
+            </label>
             <input
+              id="session-title-input"
               value={renameTitle}
               onChange={(event) => setRenameTitle(event.target.value)}
               placeholder="Session title"
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              onKeyDown={(e) => e.key === "Enter" && handleRename()}
             />
             <div className="flex items-center justify-end gap-2">
               <button
                 onClick={() => setRenameOpen(false)}
-                className="text-sm px-3 py-2 border border-gray-200 rounded-lg"
+                className="text-sm px-3 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-gray-500"
               >
                 Cancel
               </button>
-              <button onClick={handleRename} className="gradient-bg text-white px-4 py-2 rounded-lg">
+              <button
+                onClick={handleRename}
+                className="gradient-bg text-white px-4 py-2 rounded-lg text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1"
+              >
                 Save
               </button>
             </div>
@@ -1790,10 +2262,13 @@ function ProjectHub({
       fetch(url.toString())
         .then((response) => response.json())
         .then((data) => {
-          setBrowseResults(data)
+          setBrowseResults(Array.isArray(data) ? data : [])
           setBrowseLoading(false)
         })
-        .catch(() => setBrowseLoading(false))
+        .catch(() => {
+          setBrowseResults([])
+          setBrowseLoading(false)
+        })
     }, 300)
     return () => clearTimeout(timer)
   }, [browseOpen, browseQuery])
@@ -1829,16 +2304,21 @@ function ProjectHub({
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-2xl font-bold">🗂️ Projects & Worktrees</h2>
+        <h2 className="text-2xl font-bold text-gray-900">🗂️ Projects & Worktrees</h2>
         <p className="text-gray-600">Manage projects, sandboxes, and file navigation.</p>
       </div>
 
-      <div className="flex flex-wrap gap-2">
+      <div role="tablist" className="flex flex-wrap gap-2">
         {tabs.map((item) => (
           <button
             key={item}
+            role="tab"
+            aria-selected={tab === item}
+            aria-controls={`panel-${item}`}
             onClick={() => setTab(item)}
-            className={`px-3 py-2 rounded-lg text-sm ${tab === item ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-700"}`}
+            className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+              tab === item ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+            }`}
           >
             {item.charAt(0).toUpperCase() + item.slice(1)}
           </button>
@@ -1846,94 +2326,133 @@ function ProjectHub({
       </div>
 
       {tab === "projects" && (
-        <div className="space-y-4">
+        <div id="panel-projects" role="tabpanel" className="space-y-4">
           <div className="flex items-center gap-3">
-            <button onClick={() => setAddOpen(true)} className="gradient-bg text-white px-3 py-2 rounded-lg text-sm">
+            <button
+              onClick={() => setAddOpen(true)}
+              className="gradient-bg text-white px-3 py-2 rounded-lg text-sm font-medium shadow-sm hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1"
+            >
               Add Project
             </button>
-            <button onClick={() => setGitOpen(true)} className="text-sm px-3 py-2 border border-gray-200 rounded-lg">
+            <button
+              onClick={() => setGitOpen(true)}
+              className="text-sm px-3 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
               Git Setup
             </button>
           </div>
-          <div className="bg-white rounded-xl border border-gray-200 shadow-lg p-4 space-y-3">
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 space-y-3" role="list">
             {projects.map((project) => (
-              <div key={project.id} className="flex items-center justify-between gap-4">
+              <div key={project.id} role="listitem" className="flex items-center justify-between gap-4 p-2 rounded hover:bg-gray-50 transition-colors">
                 <div>
-                  <div className="text-sm font-semibold text-gray-900">
+                  <div className="text-sm font-semibold text-gray-900 flex items-center">
                     {project.name ?? project.worktree}
-                    {current?.id === project.id && <span className="text-xs text-blue-600 ml-2">Active</span>}
+                    {current?.id === project.id && (
+                      <span className="text-xs text-blue-600 ml-2 bg-blue-50 px-2 py-0.5 rounded font-medium">Active</span>
+                    )}
                   </div>
-                  <div className="text-xs text-gray-500">{project.worktree}</div>
+                  <div className="text-xs text-gray-500 font-mono mt-0.5">{project.worktree}</div>
                 </div>
                 <button
                   onClick={() => {
                     setEdit(project)
                     setEditName(project.name ?? "")
                   }}
-                  className="text-xs px-2 py-1 border border-gray-200 rounded-lg"
+                  className="text-xs px-2 py-1 border border-gray-200 rounded-lg hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  aria-label={`Rename project ${project.name ?? project.worktree}`}
                 >
                   Rename
                 </button>
               </div>
             ))}
-            {projects.length === 0 && <div className="text-sm text-gray-500">No projects registered.</div>}
+            {projects.length === 0 && <div className="text-sm text-gray-500 italic">No projects registered.</div>}
           </div>
         </div>
       )}
 
       {tab === "worktrees" && (
-        <div className="space-y-4">
-          <button onClick={() => setWorkOpen(true)} className="gradient-bg text-white px-3 py-2 rounded-lg text-sm">
+        <div id="panel-worktrees" role="tabpanel" className="space-y-4">
+          <button
+            onClick={() => setWorkOpen(true)}
+            className="gradient-bg text-white px-3 py-2 rounded-lg text-sm font-medium shadow-sm hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1"
+          >
             New Worktree
           </button>
-          <div className="bg-white rounded-xl border border-gray-200 shadow-lg p-4 space-y-2">
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 space-y-2" role="list">
             {worktrees.map((tree) => (
-              <div key={tree} className="text-sm text-gray-700">
-                • {tree}
+              <div key={tree} role="listitem" className="text-sm text-gray-700 flex items-center gap-2">
+                <span aria-hidden="true" className="text-gray-400">•</span>
+                <span className="font-mono">{tree}</span>
               </div>
             ))}
-            {worktrees.length === 0 && <div className="text-sm text-gray-500">No worktrees yet.</div>}
+            {worktrees.length === 0 && <div className="text-sm text-gray-500 italic">No worktrees yet.</div>}
           </div>
         </div>
       )}
 
       {tab === "files" && (
-        <div className="bg-white rounded-xl border border-gray-200 shadow-lg p-4 space-y-3">
+        <div id="panel-files" role="tabpanel" className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 space-y-3">
           <div className="flex items-center gap-3">
-            <button onClick={() => onSetPath(up)} className="text-xs px-2 py-1 border border-gray-200 rounded-lg">
+            <button
+              onClick={() => onSetPath(up)}
+              className="text-xs px-2 py-1 border border-gray-200 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              aria-label="Go up one directory"
+            >
               Up
             </button>
+            <label htmlFor="file-path-input" className="sr-only">File path</label>
             <input
+              id="file-path-input"
               value={filePath}
               onChange={(event) => onSetPath(event.target.value)}
-              className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm"
+              className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
-            <button onClick={() => onBrowse(filePath)} className="text-xs px-2 py-1 border border-gray-200 rounded-lg">
+            <button
+              onClick={() => onBrowse(filePath)}
+              className="text-xs px-2 py-1 border border-gray-200 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
               Refresh
             </button>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-[1fr,1.2fr] gap-4">
-            <div className="border border-gray-200 rounded-lg p-3 space-y-2 max-h-[420px] overflow-y-auto">
+            <div
+              className="border border-gray-200 rounded-lg p-3 space-y-1 max-h-[420px] overflow-y-auto"
+              role="list"
+              aria-label="File list"
+            >
               {files.map((item) => (
                 <button
                   key={item.absolute}
+                  role="listitem"
                   onClick={() => {
                     if (item.type === "directory") onSetPath(item.path)
                     if (item.type === "file") setFocus(item)
                   }}
-                  className="w-full text-left text-sm px-2 py-1 rounded hover:bg-gray-100"
+                  className={`w-full text-left text-sm px-2 py-1.5 rounded transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                    focus?.absolute === item.absolute ? "bg-blue-50 text-blue-700 font-medium" : "hover:bg-gray-50"
+                  }`}
                 >
-                  {item.type === "directory" ? "📁" : "📄"} {item.name}
+                  <span className="mr-2" aria-hidden="true">{item.type === "directory" ? "📁" : "📄"}</span>
+                  <span className="font-mono text-xs">{item.name}</span>
                 </button>
               ))}
-              {files.length === 0 && <div className="text-sm text-gray-500">No files found.</div>}
+              {files.length === 0 && <div className="text-sm text-gray-500 italic p-2">No files found.</div>}
             </div>
-            <div className="border border-gray-200 rounded-lg p-3">
-              {!focus && <div className="text-sm text-gray-500">Select a file to preview.</div>}
+            <div className="border border-gray-200 rounded-lg p-3 bg-gray-50 h-[420px] overflow-hidden flex flex-col">
+              {!focus && (
+                <div className="flex flex-col items-center justify-center h-full text-gray-400 space-y-2">
+                  <span className="text-4xl">📄</span>
+                  <span className="text-sm">Select a file to preview</span>
+                </div>
+              )}
               {focus && (
-                <div>
-                  <div className="text-sm font-semibold text-gray-900 mb-2">{focus.path}</div>
-                  <pre className="text-xs whitespace-pre-wrap text-gray-700">{preview}</pre>
+                <div className="flex flex-col h-full">
+                  <div className="text-sm font-semibold text-gray-900 mb-2 px-1 py-1 border-b border-gray-200 bg-white rounded-t">
+                    {focus.path}
+                  </div>
+                  <div className="flex-1 overflow-auto bg-white rounded-b p-2">
+                    <pre className="text-xs whitespace-pre-wrap text-gray-800 font-mono leading-relaxed">{preview}</pre>
+                  </div>
                 </div>
               )}
             </div>
@@ -1941,130 +2460,198 @@ function ProjectHub({
         </div>
       )}
 
-      {addOpen && (
-        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-lg font-semibold">Add Project</h3>
-              <button onClick={() => setAddOpen(false)} className="text-gray-400 hover:text-gray-600">
-                ✕
-              </button>
-            </div>
-            <div className="flex items-center gap-2">
-              <input
-                value={dir}
-                onChange={(event) => setDir(event.target.value)}
-                placeholder="Directory path"
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-              />
-              <button
-                onClick={() => {
-                  setBrowseQuery(dir)
-                  setBrowseOpen(true)
-                }}
-                className="text-sm px-3 py-2 border border-gray-200 rounded-lg"
-              >
-                Browse
-              </button>
-            </div>
-            <input
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-              placeholder="Project name (optional)"
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-            />
-            <div className="flex items-center justify-end gap-2">
-              <button onClick={() => setAddOpen(false)} className="text-sm px-3 py-2 border border-gray-200 rounded-lg">
-                Cancel
-              </button>
-              <button onClick={handleAdd} className="gradient-bg text-white px-4 py-2 rounded-lg">
-                Add
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {browseOpen && (
-        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-lg p-6 space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-lg font-semibold">Browse Directories</h3>
-              <button onClick={() => setBrowseOpen(false)} className="text-gray-400 hover:text-gray-600">
-                ✕
-              </button>
-            </div>
-            <input
-              value={browseQuery}
-              onChange={(event) => setBrowseQuery(event.target.value)}
-              placeholder="Search directories"
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-            />
-            <div className="flex items-center justify-between text-xs text-gray-500">
-              <span>Results from /path search</span>
-              {rootDir && (
+        {addOpen && (
+          <div
+            className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4 backdrop-blur-sm"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="add-project-title"
+          >
+            <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 id="add-project-title" className="text-lg font-semibold text-gray-900">
+                  Add Project
+                </h3>
+                <button
+                  onClick={() => setAddOpen(false)}
+                  className="text-gray-400 hover:text-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded p-1"
+                  aria-label="Close"
+                >
+                  ✕
+                </button>
+              </div>
+              <div className="flex items-center gap-2">
+                <label htmlFor="proj-dir" className="sr-only">
+                  Directory
+                </label>
+                <input
+                  id="proj-dir"
+                  value={dir}
+                  onChange={(event) => setDir(event.target.value)}
+                  placeholder="Directory path"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
                 <button
                   onClick={() => {
-                    setDir(rootDir)
-                    setBrowseOpen(false)
+                    setBrowseQuery(dir)
+                    setBrowseOpen(true)
                   }}
-                  className="text-xs text-blue-600 hover:underline"
+                  className="text-sm px-3 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
-                  Use project root
+                  Browse
                 </button>
-              )}
+              </div>
+              <label htmlFor="proj-name" className="sr-only">
+                Name
+              </label>
+              <input
+                id="proj-name"
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+                placeholder="Project name (optional)"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <div className="flex items-center justify-end gap-2">
+                <button
+                  onClick={() => setAddOpen(false)}
+                  className="text-sm px-3 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleAdd}
+                  className="gradient-bg text-white px-4 py-2 rounded-lg text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  Add
+                </button>
+              </div>
             </div>
-            <div className="border border-gray-200 rounded-lg p-3 max-h-64 overflow-y-auto space-y-2">
-              {browseLoading && <div className="text-sm text-gray-500">Searching...</div>}
-              {!browseLoading && browseResults.length === 0 && (
-                <div className="text-sm text-gray-500">No directories found.</div>
-              )}
-              {browseResults.map((item) => {
-                const path = item.path ?? item.absolute ?? item
-                return (
+          </div>
+        )}
+        {browseOpen && (
+          <div
+            className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4 backdrop-blur-sm"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="browse-dirs-title"
+          >
+            <div className="bg-white rounded-xl shadow-xl w-full max-w-lg p-6 space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 id="browse-dirs-title" className="text-lg font-semibold text-gray-900">
+                  Browse Directories
+                </h3>
+                <button
+                  onClick={() => setBrowseOpen(false)}
+                  className="text-gray-400 hover:text-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded p-1"
+                  aria-label="Close"
+                >
+                  ✕
+                </button>
+              </div>
+              <label htmlFor="browse-query" className="sr-only">
+                Search
+              </label>
+              <input
+                id="browse-query"
+                value={browseQuery}
+                onChange={(event) => setBrowseQuery(event.target.value)}
+                placeholder="Search directories..."
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <div className="flex items-center justify-between text-xs text-gray-500">
+                <span>Results from /path search</span>
+                {rootDir && (
                   <button
-                    key={path}
                     onClick={() => {
-                      setDir(path)
+                      setDir(rootDir)
                       setBrowseOpen(false)
                     }}
-                    className="w-full text-left text-sm px-2 py-1 rounded hover:bg-gray-100"
+                    className="text-xs text-blue-600 hover:underline focus:outline-none focus:ring-2 focus:ring-blue-500 rounded"
                   >
-                    📁 {path}
+                    Use project root
                   </button>
-                )
-              })}
-            </div>
-            <div className="flex items-center justify-end gap-2">
-              <button onClick={() => setBrowseOpen(false)} className="text-sm px-3 py-2 border border-gray-200 rounded-lg">
-                Close
-              </button>
+                )}
+              </div>
+              <div
+                className="border border-gray-200 rounded-lg p-3 max-h-64 overflow-y-auto space-y-2"
+                role="list"
+                aria-label="Directory list"
+              >
+                {browseLoading && <div className="text-sm text-gray-500 animate-pulse">Searching...</div>}
+                {!browseLoading && (!browseResults || browseResults.length === 0) && (
+                  <div className="text-sm text-gray-500 italic">No directories found.</div>
+                )}
+                {Array.isArray(browseResults) &&
+                  browseResults.map((item) => {
+                    const path = item.path ?? item.absolute ?? item
+                    return (
+                      <button
+                        key={path}
+                        role="listitem"
+                        onClick={() => {
+                          setDir(path)
+                          setBrowseOpen(false)
+                        }}
+                        className="w-full text-left text-sm px-2 py-1.5 rounded hover:bg-gray-100 font-mono transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      >
+                        <span className="mr-2" aria-hidden="true">
+                          📁
+                        </span>
+                        {path}
+                      </button>
+                    )
+                  })}
+              </div>
+              <div className="flex items-center justify-end gap-2">
+                <button
+                  onClick={() => setBrowseOpen(false)}
+                  className="text-sm px-3 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  Close
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
-
-      {gitOpen && (
-        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-lg font-semibold">Git Setup</h3>
-              <button onClick={() => setGitOpen(false)} className="text-gray-400 hover:text-gray-600">
-                ✕
-              </button>
-            </div>
-            <div className="text-sm text-gray-600 space-y-2">
-              <div>Initialize a repo:</div>
-              <code className="block bg-gray-100 rounded-lg p-2 text-xs">git init</code>
-              <div>Add OpenCode project marker:</div>
-              <code className="block bg-gray-100 rounded-lg p-2 text-xs">
-                echo $(git rev-list --max-parents=0 --all | head -n1) &gt; .git/opencode
-              </code>
+        )}
+        {gitOpen && (
+          <div
+            className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4 backdrop-blur-sm"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="git-setup-title"
+          >
+            <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 id="git-setup-title" className="text-lg font-semibold text-gray-900">
+                  Git Setup
+                </h3>
+                <button
+                  onClick={() => setGitOpen(false)}
+                  className="text-gray-400 hover:text-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded p-1"
+                  aria-label="Close"
+                >
+                  ✕
+                </button>
+              </div>
+              <div className="text-sm text-gray-600 space-y-3">
+                <div>
+                  <div className="font-medium mb-1">Initialize a repo:</div>
+                  <code className="block bg-gray-100 rounded-lg p-2 text-xs font-mono border border-gray-200">
+                    git init
+                  </code>
+                </div>
+                <div>
+                  <div className="font-medium mb-1">Add OpenCode project marker:</div>
+                  <code className="block bg-gray-100 rounded-lg p-2 text-xs font-mono border border-gray-200 overflow-x-auto">
+                    echo $(git rev-list --max-parents=0 --all | head -n1) &gt; .git/opencode
+                  </code>
+                </div>
+              </div>
             </div>
           </div>
-        </div>
-      )
-
+        )}
+    </div>
+  )
 }
 
 function Integrations({
@@ -2159,155 +2746,235 @@ function Integrations({
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-2xl font-bold">🔗 Integrations</h2>
+        <h2 className="text-2xl font-bold text-gray-900">🔗 Integrations</h2>
         <p className="text-gray-600">Track issues and PRs across GitHub, GitLab, and Linear.</p>
       </div>
 
-      <div className="flex flex-wrap gap-2">
+      <div role="tablist" className="flex flex-wrap gap-2">
         {tabs.map((item) => (
           <button
             key={item}
+            role="tab"
+            aria-selected={tab === item}
+            aria-controls={`panel-${item}`}
             onClick={() => setTab(item)}
-            className={`px-3 py-2 rounded-lg text-sm ${tab === item ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-700"}`}
+            className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+              tab === item ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+            }`}
           >
             {item.toUpperCase()}
           </button>
         ))}
       </div>
 
-      <div className="bg-white rounded-xl border border-gray-200 shadow-lg p-4 space-y-3">
+      <div id={`panel-${tab}`} role="tabpanel" className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 space-y-3">
         {tab === "github" && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <input
-              value={ghRepo}
-              onChange={(event) => setGhRepo(event.target.value)}
-              placeholder="owner/repo"
-              className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
-            />
-            <input
-              value={ghToken}
-              onChange={(event) => setGhToken(event.target.value)}
-              placeholder="GitHub token"
-              className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
-            />
+            <div className="space-y-1">
+              <label htmlFor="gh-repo" className="sr-only">GitHub Owner/Repo</label>
+              <input
+                id="gh-repo"
+                value={ghRepo}
+                onChange={(event) => setGhRepo(event.target.value)}
+                placeholder="owner/repo"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            <div className="space-y-1">
+              <label htmlFor="gh-token" className="sr-only">GitHub Token</label>
+              <input
+                id="gh-token"
+                type="password"
+                value={ghToken}
+                onChange={(event) => setGhToken(event.target.value)}
+                placeholder="GitHub token"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
           </div>
         )}
         {tab === "gitlab" && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <input
-              value={glProject}
-              onChange={(event) => setGlProject(event.target.value)}
-              placeholder="group/project or id"
-              className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
-            />
-            <input
-              value={glHost}
-              onChange={(event) => setGlHost(event.target.value)}
-              placeholder="https://gitlab.com"
-              className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
-            />
-            <input
-              value={glToken}
-              onChange={(event) => setGlToken(event.target.value)}
-              placeholder="GitLab token"
-              className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
-            />
+            <div className="space-y-1">
+              <label htmlFor="gl-project" className="sr-only">GitLab Project</label>
+              <input
+                id="gl-project"
+                value={glProject}
+                onChange={(event) => setGlProject(event.target.value)}
+                placeholder="group/project or id"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            <div className="space-y-1">
+              <label htmlFor="gl-host" className="sr-only">GitLab Host</label>
+              <input
+                id="gl-host"
+                value={glHost}
+                onChange={(event) => setGlHost(event.target.value)}
+                placeholder="https://gitlab.com"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            <div className="space-y-1 md:col-span-2">
+              <label htmlFor="gl-token" className="sr-only">GitLab Token</label>
+              <input
+                id="gl-token"
+                type="password"
+                value={glToken}
+                onChange={(event) => setGlToken(event.target.value)}
+                placeholder="GitLab token"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
           </div>
         )}
         {tab === "linear" && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <input
-              value={linTeam}
-              onChange={(event) => setLinTeam(event.target.value)}
-              placeholder="Team"
-              className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
-            />
-            <input
-              value={linToken}
-              onChange={(event) => setLinToken(event.target.value)}
-              placeholder="Linear token"
-              className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
-            />
+            <div className="space-y-1">
+              <label htmlFor="lin-team" className="sr-only">Linear Team</label>
+              <input
+                id="lin-team"
+                value={linTeam}
+                onChange={(event) => setLinTeam(event.target.value)}
+                placeholder="Team"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            <div className="space-y-1">
+              <label htmlFor="lin-token" className="sr-only">Linear Token</label>
+              <input
+                id="lin-token"
+                type="password"
+                value={linToken}
+                onChange={(event) => setLinToken(event.target.value)}
+                placeholder="Linear token"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
           </div>
         )}
-        <div className="flex items-center gap-2">
-          <button onClick={saveConfig} className="text-xs px-3 py-2 border border-gray-200 rounded-lg">
+        <div className="flex items-center gap-2 pt-2">
+          <button
+            onClick={saveConfig}
+            className="text-xs px-3 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
             Save Config
           </button>
-          <button onClick={sync} className="text-xs px-3 py-2 border border-gray-200 rounded-lg">
+          <button
+            onClick={sync}
+            className="text-xs px-3 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
             Sync Now
           </button>
         </div>
       </div>
 
-      <div className="bg-white rounded-xl border border-gray-200 shadow-lg p-4 space-y-3">
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 space-y-3">
+        <h3 className="text-sm font-semibold text-gray-900">Manual Entry</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <label htmlFor="entry-title" className="sr-only">Title</label>
           <input
+            id="entry-title"
             value={title}
             onChange={(event) => setTitle(event.target.value)}
             placeholder="Title"
-            className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
+            className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
+          <label htmlFor="entry-status" className="sr-only">Status</label>
           <input
+            id="entry-status"
             value={status}
             onChange={(event) => setStatus(event.target.value)}
             placeholder="Status"
-            className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
+            className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
+          <label htmlFor="entry-url" className="sr-only">URL</label>
           <input
+            id="entry-url"
             value={url}
             onChange={(event) => setUrl(event.target.value)}
             placeholder="URL"
-            className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
+            className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
           {tab === "linear" ? (
-            <input
-              value={team}
-              onChange={(event) => setTeam(event.target.value)}
-              placeholder="Team"
-              className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
-            />
+            <>
+              <label htmlFor="entry-team" className="sr-only">Team</label>
+              <input
+                id="entry-team"
+                value={team}
+                onChange={(event) => setTeam(event.target.value)}
+                placeholder="Team"
+                className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </>
           ) : (
-            <input
-              value={repo}
-              onChange={(event) => setRepo(event.target.value)}
-              placeholder="Repo"
-              className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
-            />
+            <>
+              <label htmlFor="entry-repo" className="sr-only">Repo</label>
+              <input
+                id="entry-repo"
+                value={repo}
+                onChange={(event) => setRepo(event.target.value)}
+                placeholder="Repo"
+                className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </>
           )}
           {tab === "github" && (
-            <select
-              value={kind}
-              onChange={(event) => setKind(event.target.value)}
-              className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
-            >
-              <option value="issue">Issue</option>
-              <option value="pull">PR</option>
-            </select>
+            <>
+              <label htmlFor="entry-kind" className="sr-only">Kind</label>
+              <select
+                id="entry-kind"
+                value={kind}
+                onChange={(event) => setKind(event.target.value)}
+                className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+              >
+                <option value="issue">Issue</option>
+                <option value="pull">PR</option>
+              </select>
+            </>
           )}
           {tab === "gitlab" && (
-            <select
-              value={kind}
-              onChange={(event) => setKind(event.target.value)}
-              className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
-            >
-              <option value="issue">Issue</option>
-              <option value="merge">MR</option>
-            </select>
+            <>
+              <label htmlFor="entry-kind" className="sr-only">Kind</label>
+              <select
+                id="entry-kind"
+                value={kind}
+                onChange={(event) => setKind(event.target.value)}
+                className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+              >
+                <option value="issue">Issue</option>
+                <option value="merge">MR</option>
+              </select>
+            </>
           )}
-          <button onClick={handleAdd} className="gradient-bg text-white px-3 py-2 rounded-lg text-sm">
+          <button
+            onClick={handleAdd}
+            className="gradient-bg text-white px-3 py-2 rounded-lg text-sm font-medium shadow-sm hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1"
+          >
             Add Entry
           </button>
         </div>
       </div>
 
-      <div className="bg-white rounded-xl border border-gray-200 shadow-lg p-4 space-y-2">
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 space-y-2" role="list">
         {list.map((item) => (
-          <div key={item.id} className="flex items-start justify-between gap-3">
+          <div
+            key={item.id}
+            role="listitem"
+            className="flex items-start justify-between gap-3 p-2 rounded hover:bg-gray-50 transition-colors"
+          >
             <div>
               <div className="text-sm font-semibold text-gray-900">{item.title}</div>
               <div className="text-xs text-gray-500">
-                {item.status} · {item.url}
+                {item.status} ·{" "}
+                <a
+                  href={item.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-blue-600 hover:underline focus:outline-none focus:ring-2 focus:ring-blue-500 rounded px-1"
+                >
+                  Link
+                </a>
               </div>
             </div>
             <button
@@ -2316,13 +2983,14 @@ function Integrations({
                 if (tab === "gitlab") onRemoveGitLab(item.id)
                 if (tab === "linear") onRemoveLinear(item.id)
               }}
-              className="text-xs text-gray-400 hover:text-red-500"
+              className="text-xs text-gray-400 hover:text-red-500 focus:outline-none focus:text-red-500 p-1"
+              aria-label={`Remove entry ${item.title}`}
             >
               Remove
             </button>
           </div>
         ))}
-        {list.length === 0 && <div className="text-sm text-gray-500">No entries yet.</div>}
+        {list.length === 0 && <div className="text-sm text-gray-500 italic">No entries yet.</div>}
       </div>
     </div>
   )
@@ -2395,106 +3063,124 @@ function SystemOps({
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-2xl font-bold">🧩 System & Ops</h2>
+        <h2 className="text-2xl font-bold text-gray-900">🧩 System & Ops</h2>
         <p className="text-gray-600">System status, rate limits, settings, and updates.</p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="bg-white rounded-xl border border-gray-200 shadow-lg p-4 space-y-3">
-          <h3 className="text-sm font-semibold">Infrastructure Status</h3>
-          <div className="space-y-2 text-sm text-gray-700">
-            <div>MCP servers: {count(infra.mcp)}</div>
-            <div>LSP status: {count(infra.lsp)}</div>
-            <div>Formatter status: {count(infra.formatter)}</div>
-            <div>File status entries: {count(infra.file)}</div>
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 space-y-3">
+          <h3 className="text-sm font-semibold text-gray-900">Infrastructure Status</h3>
+          <div className="space-y-2 text-sm text-gray-700" role="list">
+            <div role="listitem">MCP servers: {count(infra.mcp)}</div>
+            <div role="listitem">LSP status: {count(infra.lsp)}</div>
+            <div role="listitem">Formatter status: {count(infra.formatter)}</div>
+            <div role="listitem">File status entries: {count(infra.file)}</div>
           </div>
         </div>
 
-        <div className="bg-white rounded-xl border border-gray-200 shadow-lg p-4 space-y-3">
-          <h3 className="text-sm font-semibold">Rate Limit</h3>
-          <div className="text-xs text-gray-500">
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 space-y-3">
+          <h3 className="text-sm font-semibold text-gray-900">Rate Limit</h3>
+          <div className="text-xs text-gray-500" aria-label={`Usage: ${limit.used} out of ${limit.limit}`}>
             {limit.used} / {limit.limit}
           </div>
-          <div className="w-full bg-gray-200 rounded-full h-2">
+          <div
+            className="w-full bg-gray-200 rounded-full h-2"
+            role="progressbar"
+            aria-valuenow={progress}
+            aria-valuemin="0"
+            aria-valuemax="100"
+          >
             <div className="bg-blue-600 h-2 rounded-full" style={{ width: `${progress}%` }} />
           </div>
           <div className="grid grid-cols-1 gap-2">
+            <label htmlFor="limit-input" className="sr-only">Limit</label>
             <input
+              id="limit-input"
               value={limitValue}
               onChange={(event) => setLimitValue(event.target.value)}
-              className="border border-gray-300 rounded-lg px-3 py-2 text-xs"
+              className="border border-gray-300 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
               placeholder="Limit"
             />
+            <label htmlFor="used-input" className="sr-only">Used</label>
             <input
+              id="used-input"
               value={usedValue}
               onChange={(event) => setUsedValue(event.target.value)}
-              className="border border-gray-300 rounded-lg px-3 py-2 text-xs"
+              className="border border-gray-300 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
               placeholder="Used"
             />
+            <label htmlFor="reset-input" className="sr-only">Reset Date</label>
             <input
+              id="reset-input"
               type="datetime-local"
               value={resetValue}
               onChange={(event) => setResetValue(event.target.value)}
-              className="border border-gray-300 rounded-lg px-3 py-2 text-xs"
+              className="border border-gray-300 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
             <button
               onClick={handleLimit}
-              className="text-xs px-3 py-2 border border-gray-200 rounded-lg hover:bg-gray-50"
+              className="text-xs px-3 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               Update Limit
             </button>
           </div>
         </div>
 
-        <div className="bg-white rounded-xl border border-gray-200 shadow-lg p-4 space-y-3">
-          <h3 className="text-sm font-semibold">Settings</h3>
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 space-y-3">
+          <h3 className="text-sm font-semibold text-gray-900">Settings</h3>
           <div className="space-y-2 text-sm text-gray-700">
-            <label className="flex items-center gap-2">
+            <label className="flex items-center gap-2 cursor-pointer">
               <input
                 type="checkbox"
                 checked={settings.agents.autoSelect}
                 onChange={(event) => toggle("agents", "autoSelect", event.target.checked)}
+                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
               />
               Auto-select agents
             </label>
-            <label className="flex items-center gap-2">
+            <label className="flex items-center gap-2 cursor-pointer">
               <input
                 type="checkbox"
                 checked={settings.notifications.updates}
                 onChange={(event) => toggle("notifications", "updates", event.target.checked)}
+                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
               />
               Update notifications
             </label>
-            <label className="flex items-center gap-2">
+            <label className="flex items-center gap-2 cursor-pointer">
               <input
                 type="checkbox"
                 checked={settings.notifications.errors}
                 onChange={(event) => toggle("notifications", "errors", event.target.checked)}
+                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
               />
               Error alerts
             </label>
-            <label className="flex items-center gap-2">
+            <label className="flex items-center gap-2 cursor-pointer">
               <input
                 type="checkbox"
                 checked={settings.security.share}
                 onChange={(event) => toggle("security", "share", event.target.checked)}
+                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
               />
               Allow sharing
             </label>
-            <label className="flex items-center gap-2">
+            <label className="flex items-center gap-2 cursor-pointer">
               <input
                 type="checkbox"
                 checked={settings.auth.requireApproval}
                 onChange={(event) => toggle("auth", "requireApproval", event.target.checked)}
+                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
               />
               Require approvals
             </label>
-            <div>
-              <div className="text-xs text-gray-500">Default agent</div>
+            <div className="pt-2">
+              <label htmlFor="default-agent-select" className="text-xs text-gray-500 block mb-1">Default agent</label>
               <select
+                id="default-agent-select"
                 value={settings.agents.defaultAgent}
                 onChange={(event) => toggle("agents", "defaultAgent", event.target.value)}
-                className="border border-gray-300 rounded-lg px-2 py-1 text-xs w-full"
+                className="border border-gray-300 rounded-lg px-2 py-1 text-xs w-full focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
               >
                 {agents.map((agent) => (
                   <option key={agent.name} value={agent.name}>
@@ -2508,25 +3194,31 @@ function SystemOps({
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="bg-white rounded-xl border border-gray-200 shadow-lg p-4 space-y-3">
-          <h3 className="text-sm font-semibold">Changelog</h3>
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 space-y-3">
+          <h3 className="text-sm font-semibold text-gray-900">Changelog</h3>
           <div className="space-y-2">
+            <label htmlFor="changelog-title" className="sr-only">Title</label>
             <input
+              id="changelog-title"
               value={title}
               onChange={(event) => setTitle(event.target.value)}
               placeholder="Title"
-              className="border border-gray-300 rounded-lg px-3 py-2 text-xs w-full"
+              className="border border-gray-300 rounded-lg px-3 py-2 text-xs w-full focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
+            <label htmlFor="changelog-body" className="sr-only">Details</label>
             <textarea
+              id="changelog-body"
               value={body}
               onChange={(event) => setBody(event.target.value)}
               placeholder="Details"
-              className="border border-gray-300 rounded-lg px-3 py-2 text-xs w-full h-20"
+              className="border border-gray-300 rounded-lg px-3 py-2 text-xs w-full h-20 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
+            <label htmlFor="changelog-type" className="sr-only">Type</label>
             <select
+              id="changelog-type"
               value={type}
               onChange={(event) => setType(event.target.value)}
-              className="border border-gray-300 rounded-lg px-3 py-2 text-xs w-full"
+              className="border border-gray-300 rounded-lg px-3 py-2 text-xs w-full focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
             >
               {types.map((item) => (
                 <option key={item} value={item}>
@@ -2536,43 +3228,49 @@ function SystemOps({
             </select>
             <button
               onClick={handleChangelog}
-              className="text-xs px-3 py-2 border border-gray-200 rounded-lg hover:bg-gray-50"
+              className="text-xs px-3 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               Add Entry
             </button>
           </div>
-          <div className="space-y-2">
+          <div className="space-y-2" role="list">
             {changelog.map((entry) => (
-              <div key={entry.id} className="text-xs text-gray-700">
+              <div key={entry.id} role="listitem" className="text-xs text-gray-700 p-2 rounded hover:bg-gray-50 transition-colors">
                 <div className="font-semibold">
-                  {entry.title} · {entry.type}
+                  {entry.title} · <span className="text-gray-500 font-normal">{entry.type}</span>
                 </div>
-                <div className="text-gray-500">{entry.body}</div>
+                <div className="text-gray-500 mt-1">{entry.body}</div>
               </div>
             ))}
-            {changelog.length === 0 && <div className="text-xs text-gray-500">No changelog entries.</div>}
+            {changelog.length === 0 && <div className="text-xs text-gray-500 italic">No changelog entries.</div>}
           </div>
         </div>
 
-        <div className="bg-white rounded-xl border border-gray-200 shadow-lg p-4 space-y-3">
-          <h3 className="text-sm font-semibold">Update Notifications</h3>
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 space-y-3">
+          <h3 className="text-sm font-semibold text-gray-900">Update Notifications</h3>
           <div className="space-y-2">
+            <label htmlFor="notice-title" className="sr-only">Title</label>
             <input
+              id="notice-title"
               value={noticeTitle}
               onChange={(event) => setNoticeTitle(event.target.value)}
               placeholder="Title"
-              className="border border-gray-300 rounded-lg px-3 py-2 text-xs w-full"
+              className="border border-gray-300 rounded-lg px-3 py-2 text-xs w-full focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
+            <label htmlFor="notice-body" className="sr-only">Message</label>
             <textarea
+              id="notice-body"
               value={noticeBody}
               onChange={(event) => setNoticeBody(event.target.value)}
               placeholder="Message"
-              className="border border-gray-300 rounded-lg px-3 py-2 text-xs w-full h-20"
+              className="border border-gray-300 rounded-lg px-3 py-2 text-xs w-full h-20 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
+            <label htmlFor="notice-type" className="sr-only">Type</label>
             <select
+              id="notice-type"
               value={noticeType}
               onChange={(event) => setNoticeType(event.target.value)}
-              className="border border-gray-300 rounded-lg px-3 py-2 text-xs w-full"
+              className="border border-gray-300 rounded-lg px-3 py-2 text-xs w-full focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
             >
               {noticeTypes.map((item) => (
                 <option key={item} value={item}>
@@ -2582,29 +3280,34 @@ function SystemOps({
             </select>
             <button
               onClick={handleNotice}
-              className="text-xs px-3 py-2 border border-gray-200 rounded-lg hover:bg-gray-50"
+              className="text-xs px-3 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               Add Notification
             </button>
           </div>
-          <div className="space-y-2">
+          <div className="space-y-2" role="list">
             {notifications.map((note) => (
-              <div key={note.id} className="text-xs text-gray-700 flex items-start justify-between gap-3">
+              <div
+                key={note.id}
+                role="listitem"
+                className="text-xs text-gray-700 flex items-start justify-between gap-3 p-2 rounded hover:bg-gray-50 transition-colors"
+              >
                 <div>
                   <div className="font-semibold">
-                    {note.title} · {note.type}
+                    {note.title} · <span className="text-gray-500 font-normal">{note.type}</span>
                   </div>
-                  <div className="text-gray-500">{note.body}</div>
+                  <div className="text-gray-500 mt-1">{note.body}</div>
                 </div>
                 <button
                   onClick={() => onDismissNotification(note.id)}
-                  className="text-xs text-gray-400 hover:text-blue-600"
+                  className="text-xs text-gray-400 hover:text-blue-600 focus:outline-none focus:text-blue-600 p-1"
+                  aria-label={note.read ? "Mark as unread" : "Dismiss notification"}
                 >
                   {note.read ? "Read" : "Dismiss"}
                 </button>
               </div>
             ))}
-            {notifications.length === 0 && <div className="text-xs text-gray-500">No notifications yet.</div>}
+            {notifications.length === 0 && <div className="text-xs text-gray-500 italic">No notifications yet.</div>}
           </div>
         </div>
       </div>
@@ -2616,29 +3319,37 @@ function AgentTools({ agents }) {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-2xl font-bold">🛠️ Agent Tools</h2>
+        <h2 className="text-2xl font-bold text-gray-900">🛠️ Agent Tools</h2>
         <p className="text-gray-600">Review available agents and their execution profiles.</p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4" role="list">
         {agents.map((agent) => (
-          <div key={agent.name} className="bg-white rounded-xl border border-gray-200 shadow-lg p-4">
+          <div
+            key={agent.name}
+            role="listitem"
+            className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 hover:shadow-md transition-shadow"
+          >
             <div className="flex items-start justify-between">
               <div>
                 <div className="text-lg font-semibold text-gray-900">{agent.name}</div>
-                <div className="text-xs text-gray-500">Mode: {agent.mode}</div>
+                <div className="text-xs text-gray-500 flex items-center gap-1">
+                  <span className="font-medium">Mode:</span> {agent.mode}
+                </div>
               </div>
               {agent.model && (
-                <span className="text-xs text-gray-500">
+                <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded font-mono">
                   {agent.model.providerID}/{agent.model.modelID}
                 </span>
               )}
             </div>
-            <div className="text-sm text-gray-600 mt-3">{agent.description || "No description"}</div>
-            <div className="text-xs text-gray-400 mt-2">Steps: {agent.steps ?? "Default"}</div>
+            <div className="text-sm text-gray-600 mt-3">{agent.description || "No description provided."}</div>
+            <div className="text-xs text-gray-400 mt-2 flex items-center gap-1">
+              <span className="font-medium">Steps:</span> {agent.steps ?? "Default"}
+            </div>
           </div>
         ))}
-        {agents.length === 0 && <div className="text-sm text-gray-500">No agents loaded.</div>}
+        {agents.length === 0 && <div className="text-sm text-gray-500 italic">No agents loaded.</div>}
       </div>
     </div>
   )
@@ -3046,6 +3757,29 @@ function App() {
     return data
   }, [ensureSession, sendPrompt, loadMessages])
 
+  const createFeature = useCallback(async (payload) => {
+    const response = await fetch("/app/roadmap", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    })
+    const feature = await response.json()
+    setRoadmap((current) => ({
+      ...current,
+      features: [feature, ...current.features],
+    }))
+  }, [])
+
+  const createIdea = useCallback(async (payload) => {
+    const response = await fetch("/app/ideation", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    })
+    const idea = await response.json()
+    setIdeas((items) => [idea, ...items])
+  }, [])
+
   const generateRoadmap = useCallback(
     (includeCompetitors) => {
       setRoadmapBusy(true)
@@ -3262,19 +3996,6 @@ function App() {
     setTasks((items) => items.map((item) => (item.id === task.id ? task : item)))
   }, [])
 
-  const createFeature = useCallback(async (payload) => {
-    const response = await fetch("/app/roadmap", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    })
-    const feature = await response.json()
-    setRoadmap((current) => ({
-      ...current,
-      features: [feature, ...current.features],
-    }))
-  }, [])
-
   const toggleFeature = useCallback(async (featureID, status) => {
     const response = await fetch(`/app/roadmap/${featureID}`, {
       method: "PATCH",
@@ -3298,16 +4019,6 @@ function App() {
     link.download = `roadmap.${format === "md" ? "md" : format}`
     link.click()
     URL.revokeObjectURL(url)
-  }, [])
-
-  const createIdea = useCallback(async (payload) => {
-    const response = await fetch("/app/ideation", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    })
-    const idea = await response.json()
-    setIdeas((items) => [idea, ...items])
   }, [])
 
   const updateIdea = useCallback(async (ideaID, status) => {
@@ -3518,10 +4229,12 @@ function App() {
         onNewTask={() => setWizard(true)}
       />
 
-      <div className={`flex-1 transition-all duration-300 overflow-hidden ${sidebarOpen ? "ml-72" : "ml-16"}`}>
+      <div className={`flex-1 flex flex-col transition-all duration-300 overflow-hidden ${sidebarOpen ? "ml-72" : "ml-16"}`}>
         <header className="bg-white border-b border-gray-200 px-6 py-4 sticky top-0 z-30">
           <div className="flex items-center gap-4">
-            <div className="p-2 gradient-bg rounded-lg text-white">🧠</div>
+            <div className="p-2 gradient-bg rounded-lg text-white" role="img" aria-label="OpenCode Logo">
+              🧠
+            </div>
             <div>
               <h1 className="text-xl font-bold">OpenCode Auto Interface</h1>
               <p className="text-sm text-gray-500">Professional AI Development Environment</p>
@@ -3529,7 +4242,7 @@ function App() {
           </div>
         </header>
 
-        <main className="flex-1 overflow-y-auto p-6">{renderView()}</main>
+        <main className="flex-1 overflow-y-auto p-6 scroll-smooth">{renderView()}</main>
       </div>
 
       <TaskWizard open={wizard} onClose={() => setWizard(false)} onSubmit={createTask} />

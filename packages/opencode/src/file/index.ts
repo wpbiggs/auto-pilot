@@ -12,6 +12,7 @@ import { Instance } from "../project/instance"
 import { Ripgrep } from "./ripgrep"
 import fuzzysort from "fuzzysort"
 import { Global } from "../global"
+import { HTTPException } from "hono/http-exception"
 
 export namespace File {
   const log = Log.create({ service: "file" })
@@ -280,7 +281,7 @@ export namespace File {
     // TODO: Filesystem.contains is lexical only - symlinks inside the project can escape.
     // TODO: On Windows, cross-drive paths bypass this check. Consider realpath canonicalization.
     if (!Instance.containsPath(full)) {
-      throw new Error(`Access denied: path escapes project directory`)
+      throw new HTTPException(403, { message: `Access denied: path escapes project directory` })
     }
 
     const bunFile = Bun.file(full)
@@ -340,7 +341,7 @@ export namespace File {
     // TODO: Filesystem.contains is lexical only - symlinks inside the project can escape.
     // TODO: On Windows, cross-drive paths bypass this check. Consider realpath canonicalization.
     if (!Instance.containsPath(resolved)) {
-      throw new Error(`Access denied: path escapes project directory`)
+      throw new HTTPException(403, { message: `Access denied: path escapes project directory` })
     }
 
     const nodes: Node[] = []
