@@ -5,17 +5,89 @@ import { buildClientParams, type Client, type Options as Options2, type TDataSha
 import type {
   AgentPartInput,
   AppAgentsResponses,
+  AppContextCreateErrors,
+  AppContextCreateResponses,
+  AppContextIndexResponses,
+  AppContextMemoriesResponses,
+  AppContextRemoveErrors,
+  AppContextRemoveResponses,
+  AppIdeationConvertErrors,
+  AppIdeationConvertResponses,
+  AppIdeationCreateErrors,
+  AppIdeationCreateResponses,
+  AppIdeationListResponses,
+  AppIdeationRemoveErrors,
+  AppIdeationRemoveResponses,
+  AppIdeationUpdateErrors,
+  AppIdeationUpdateResponses,
+  AppInsightsCompetitorsResponses,
+  AppInsightsCreateErrors,
+  AppInsightsCreateResponses,
+  AppInsightsRemoveErrors,
+  AppInsightsRemoveResponses,
+  AppIntegrationsConfigResponses,
+  AppIntegrationsConfigUpdateErrors,
+  AppIntegrationsConfigUpdateResponses,
+  AppIntegrationsGithubCreateErrors,
+  AppIntegrationsGithubCreateResponses,
+  AppIntegrationsGithubListResponses,
+  AppIntegrationsGithubRemoveErrors,
+  AppIntegrationsGithubRemoveResponses,
+  AppIntegrationsGithubSyncErrors,
+  AppIntegrationsGithubSyncResponses,
+  AppIntegrationsGitlabCreateErrors,
+  AppIntegrationsGitlabCreateResponses,
+  AppIntegrationsGitlabListResponses,
+  AppIntegrationsGitlabRemoveErrors,
+  AppIntegrationsGitlabRemoveResponses,
+  AppIntegrationsGitlabSyncErrors,
+  AppIntegrationsGitlabSyncResponses,
+  AppIntegrationsLinearCreateErrors,
+  AppIntegrationsLinearCreateResponses,
+  AppIntegrationsLinearListResponses,
+  AppIntegrationsLinearRemoveErrors,
+  AppIntegrationsLinearRemoveResponses,
+  AppIntegrationsLinearSyncErrors,
+  AppIntegrationsLinearSyncResponses,
+  AppKanbanCreateErrors,
+  AppKanbanCreateResponses,
+  AppKanbanListResponses,
+  AppKanbanRemoveErrors,
+  AppKanbanRemoveResponses,
+  AppKanbanUpdateErrors,
+  AppKanbanUpdateResponses,
   AppLogErrors,
   AppLogResponses,
+  AppRoadmapCreateErrors,
+  AppRoadmapCreateResponses,
+  AppRoadmapExportResponses,
+  AppRoadmapGetResponses,
+  AppRoadmapRemoveErrors,
+  AppRoadmapRemoveResponses,
+  AppRoadmapUpdateErrors,
+  AppRoadmapUpdateResponses,
+  AppSystemChangelogCreateErrors,
+  AppSystemChangelogCreateResponses,
+  AppSystemChangelogRemoveErrors,
+  AppSystemChangelogRemoveResponses,
+  AppSystemChangelogResponses,
+  AppSystemLimitResponses,
+  AppSystemLimitUpdateErrors,
+  AppSystemLimitUpdateResponses,
+  AppSystemNotificationsCreateErrors,
+  AppSystemNotificationsCreateResponses,
+  AppSystemNotificationsDismissErrors,
+  AppSystemNotificationsDismissResponses,
+  AppSystemNotificationsResponses,
+  AppSystemSettingsResponses,
+  AppSystemSettingsUpdateErrors,
+  AppSystemSettingsUpdateResponses,
   Auth as Auth2,
   AuthSetErrors,
   AuthSetResponses,
   CommandListResponses,
-  Config as Config2,
   ConfigGetResponses,
   ConfigProvidersResponses,
-  ConfigUpdateErrors,
-  ConfigUpdateResponses,
   EventSubscribeResponses,
   EventTuiCommandExecute,
   EventTuiPromptAppend,
@@ -63,6 +135,8 @@ import type {
   PermissionRespondErrors,
   PermissionRespondResponses,
   PermissionRuleset,
+  ProjectAddErrors,
+  ProjectAddResponses,
   ProjectCurrentResponses,
   ProjectListResponses,
   ProjectUpdateErrors,
@@ -266,6 +340,49 @@ export class Project extends HeyApiClient {
   }
 
   /**
+   * Add project
+   *
+   * Register a new project from a directory path.
+   */
+  public add<ThrowOnError extends boolean = false>(
+    parameters?: {
+      query_directory?: string
+      body_directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            {
+              in: "query",
+              key: "query_directory",
+              map: "directory",
+            },
+            {
+              in: "body",
+              key: "body_directory",
+              map: "directory",
+            },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<ProjectAddResponses, ProjectAddErrors, ThrowOnError>({
+      url: "/project",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
    * Get current project
    *
    * Retrieve the currently active project that OpenCode is working with.
@@ -325,6 +442,1619 @@ export class Project extends HeyApiClient {
       },
     })
   }
+}
+
+export class Kanban extends HeyApiClient {
+  /**
+   * List kanban tasks
+   *
+   * Retrieve kanban tasks for the current project.
+   */
+  public list<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).get<AppKanbanListResponses, unknown, ThrowOnError>({
+      url: "/app/kanban",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Create kanban task
+   *
+   * Create a kanban task for the current project.
+   */
+  public create<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      title?: string
+      description?: string
+      owner?: string
+      status?: "backlog" | "in_progress" | "review" | "done"
+      category?: string
+      complexity?: string
+      priority?: string
+      estimate?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "body", key: "title" },
+            { in: "body", key: "description" },
+            { in: "body", key: "owner" },
+            { in: "body", key: "status" },
+            { in: "body", key: "category" },
+            { in: "body", key: "complexity" },
+            { in: "body", key: "priority" },
+            { in: "body", key: "estimate" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<AppKanbanCreateResponses, AppKanbanCreateErrors, ThrowOnError>({
+      url: "/app/kanban",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Delete kanban task
+   *
+   * Remove a kanban task.
+   */
+  public remove<ThrowOnError extends boolean = false>(
+    parameters: {
+      taskID: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "taskID" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).delete<AppKanbanRemoveResponses, AppKanbanRemoveErrors, ThrowOnError>({
+      url: "/app/kanban/{taskID}",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Update kanban task
+   *
+   * Update an existing kanban task.
+   */
+  public update<ThrowOnError extends boolean = false>(
+    parameters: {
+      taskID: string
+      directory?: string
+      title?: string
+      description?: string
+      owner?: string
+      status?: "backlog" | "in_progress" | "review" | "done"
+      category?: string
+      complexity?: string
+      priority?: string
+      estimate?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "taskID" },
+            { in: "query", key: "directory" },
+            { in: "body", key: "title" },
+            { in: "body", key: "description" },
+            { in: "body", key: "owner" },
+            { in: "body", key: "status" },
+            { in: "body", key: "category" },
+            { in: "body", key: "complexity" },
+            { in: "body", key: "priority" },
+            { in: "body", key: "estimate" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).patch<AppKanbanUpdateResponses, AppKanbanUpdateErrors, ThrowOnError>({
+      url: "/app/kanban/{taskID}",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+}
+
+export class Roadmap extends HeyApiClient {
+  /**
+   * Get roadmap
+   *
+   * Retrieve the product roadmap for the current project.
+   */
+  public get<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).get<AppRoadmapGetResponses, unknown, ThrowOnError>({
+      url: "/app/roadmap",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Create roadmap feature
+   *
+   * Add a new feature to the roadmap.
+   */
+  public create<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      title?: string
+      phase?: string
+      owner?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "body", key: "title" },
+            { in: "body", key: "phase" },
+            { in: "body", key: "owner" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<AppRoadmapCreateResponses, AppRoadmapCreateErrors, ThrowOnError>({
+      url: "/app/roadmap",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Delete roadmap feature
+   *
+   * Remove a roadmap feature.
+   */
+  public remove<ThrowOnError extends boolean = false>(
+    parameters: {
+      featureID: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "featureID" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).delete<AppRoadmapRemoveResponses, AppRoadmapRemoveErrors, ThrowOnError>({
+      url: "/app/roadmap/{featureID}",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Update roadmap feature
+   *
+   * Update a roadmap feature.
+   */
+  public update<ThrowOnError extends boolean = false>(
+    parameters: {
+      featureID: string
+      directory?: string
+      title?: string
+      phase?: string
+      status?: "planned" | "in_progress" | "done"
+      owner?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "featureID" },
+            { in: "query", key: "directory" },
+            { in: "body", key: "title" },
+            { in: "body", key: "phase" },
+            { in: "body", key: "status" },
+            { in: "body", key: "owner" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).patch<AppRoadmapUpdateResponses, AppRoadmapUpdateErrors, ThrowOnError>({
+      url: "/app/roadmap/{featureID}",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Export roadmap
+   *
+   * Export roadmap data in JSON, CSV, or Markdown.
+   */
+  public export<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      format?: "json" | "csv" | "md"
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "format" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<AppRoadmapExportResponses, unknown, ThrowOnError>({
+      url: "/app/roadmap/export",
+      ...options,
+      ...params,
+    })
+  }
+}
+
+export class Ideation extends HeyApiClient {
+  /**
+   * List ideas
+   *
+   * Retrieve ideation ideas for the current project.
+   */
+  public list<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).get<AppIdeationListResponses, unknown, ThrowOnError>({
+      url: "/app/ideation",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Create idea
+   *
+   * Create an ideation entry.
+   */
+  public create<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      title?: string
+      type?: string
+      impact?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "body", key: "title" },
+            { in: "body", key: "type" },
+            { in: "body", key: "impact" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<AppIdeationCreateResponses, AppIdeationCreateErrors, ThrowOnError>({
+      url: "/app/ideation",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Delete idea
+   *
+   * Remove an idea.
+   */
+  public remove<ThrowOnError extends boolean = false>(
+    parameters: {
+      ideaID: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "ideaID" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).delete<AppIdeationRemoveResponses, AppIdeationRemoveErrors, ThrowOnError>({
+      url: "/app/ideation/{ideaID}",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Update idea
+   *
+   * Update an idea.
+   */
+  public update<ThrowOnError extends boolean = false>(
+    parameters: {
+      ideaID: string
+      directory?: string
+      title?: string
+      type?: string
+      impact?: string
+      status?: "active" | "dismissed" | "archived" | "converted"
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "ideaID" },
+            { in: "query", key: "directory" },
+            { in: "body", key: "title" },
+            { in: "body", key: "type" },
+            { in: "body", key: "impact" },
+            { in: "body", key: "status" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).patch<AppIdeationUpdateResponses, AppIdeationUpdateErrors, ThrowOnError>({
+      url: "/app/ideation/{ideaID}",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Convert idea
+   *
+   * Convert an idea into a kanban task.
+   */
+  public convert<ThrowOnError extends boolean = false>(
+    parameters: {
+      ideaID: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "ideaID" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<AppIdeationConvertResponses, AppIdeationConvertErrors, ThrowOnError>({
+      url: "/app/ideation/{ideaID}/convert",
+      ...options,
+      ...params,
+    })
+  }
+}
+
+export class Context extends HeyApiClient {
+  /**
+   * Get context index
+   *
+   * Search project index and return matching files/dirs.
+   */
+  public index<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      query?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "query" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<AppContextIndexResponses, unknown, ThrowOnError>({
+      url: "/app/context/index",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * List memories
+   *
+   * Retrieve stored context memories.
+   */
+  public memories<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      query?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "query" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<AppContextMemoriesResponses, unknown, ThrowOnError>({
+      url: "/app/context/memories",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Create memory
+   *
+   * Create a context memory entry.
+   */
+  public create<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      title?: string
+      tag?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "body", key: "title" },
+            { in: "body", key: "tag" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<AppContextCreateResponses, AppContextCreateErrors, ThrowOnError>({
+      url: "/app/context/memories",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Delete memory
+   *
+   * Remove a context memory entry.
+   */
+  public remove<ThrowOnError extends boolean = false>(
+    parameters: {
+      memoryID: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "memoryID" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).delete<AppContextRemoveResponses, AppContextRemoveErrors, ThrowOnError>({
+      url: "/app/context/memories/{memoryID}",
+      ...options,
+      ...params,
+    })
+  }
+}
+
+export class Insights extends HeyApiClient {
+  /**
+   * List competitors
+   *
+   * Retrieve competitor notes for insights.
+   */
+  public competitors<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).get<AppInsightsCompetitorsResponses, unknown, ThrowOnError>({
+      url: "/app/insights/competitors",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Create competitor
+   *
+   * Create a competitor note.
+   */
+  public create<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      name?: string
+      note?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "body", key: "name" },
+            { in: "body", key: "note" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<AppInsightsCreateResponses, AppInsightsCreateErrors, ThrowOnError>({
+      url: "/app/insights/competitors",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Delete competitor
+   *
+   * Remove a competitor note.
+   */
+  public remove<ThrowOnError extends boolean = false>(
+    parameters: {
+      competitorID: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "competitorID" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).delete<AppInsightsRemoveResponses, AppInsightsRemoveErrors, ThrowOnError>({
+      url: "/app/insights/competitors/{competitorID}",
+      ...options,
+      ...params,
+    })
+  }
+}
+
+export class Changelog extends HeyApiClient {
+  /**
+   * Create changelog entry
+   *
+   * Add a changelog entry.
+   */
+  public create<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      title?: string
+      body?: string
+      type?: "feature" | "fix" | "update"
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "body", key: "title" },
+            { in: "body", key: "body" },
+            { in: "body", key: "type" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      AppSystemChangelogCreateResponses,
+      AppSystemChangelogCreateErrors,
+      ThrowOnError
+    >({
+      url: "/app/system/changelog",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Delete changelog entry
+   *
+   * Remove a changelog entry.
+   */
+  public remove<ThrowOnError extends boolean = false>(
+    parameters: {
+      entryID: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "entryID" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).delete<
+      AppSystemChangelogRemoveResponses,
+      AppSystemChangelogRemoveErrors,
+      ThrowOnError
+    >({
+      url: "/app/system/changelog/{entryID}",
+      ...options,
+      ...params,
+    })
+  }
+}
+
+export class Notifications extends HeyApiClient {
+  /**
+   * Create notification
+   *
+   * Create a system notification.
+   */
+  public create<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      title?: string
+      body?: string
+      type?: "update" | "alert" | "info"
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "body", key: "title" },
+            { in: "body", key: "body" },
+            { in: "body", key: "type" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      AppSystemNotificationsCreateResponses,
+      AppSystemNotificationsCreateErrors,
+      ThrowOnError
+    >({
+      url: "/app/system/notifications",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Dismiss notification
+   *
+   * Mark a notification as read.
+   */
+  public dismiss<ThrowOnError extends boolean = false>(
+    parameters: {
+      noteID: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "noteID" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).patch<
+      AppSystemNotificationsDismissResponses,
+      AppSystemNotificationsDismissErrors,
+      ThrowOnError
+    >({
+      url: "/app/system/notifications/{noteID}",
+      ...options,
+      ...params,
+    })
+  }
+}
+
+export class Settings extends HeyApiClient {
+  /**
+   * Update system settings
+   *
+   * Update system settings for the current project.
+   */
+  public update<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      agents?: {
+        autoSelect: boolean
+        defaultAgent: string
+      }
+      notifications?: {
+        updates: boolean
+        errors: boolean
+      }
+      security?: {
+        share: boolean
+      }
+      auth?: {
+        requireApproval: boolean
+      }
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "body", key: "agents" },
+            { in: "body", key: "notifications" },
+            { in: "body", key: "security" },
+            { in: "body", key: "auth" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).patch<
+      AppSystemSettingsUpdateResponses,
+      AppSystemSettingsUpdateErrors,
+      ThrowOnError
+    >({
+      url: "/app/system/settings",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+}
+
+export class Limit extends HeyApiClient {
+  /**
+   * Update rate limit
+   *
+   * Update stored rate limit info.
+   */
+  public update<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      limit?: number
+      used?: number
+      resetAt?: number
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "body", key: "limit" },
+            { in: "body", key: "used" },
+            { in: "body", key: "resetAt" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).patch<
+      AppSystemLimitUpdateResponses,
+      AppSystemLimitUpdateErrors,
+      ThrowOnError
+    >({
+      url: "/app/system/limit",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+}
+
+export class System extends HeyApiClient {
+  /**
+   * List changelog entries
+   *
+   * Retrieve changelog entries for the current project.
+   */
+  public changelog<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).get<AppSystemChangelogResponses, unknown, ThrowOnError>({
+      url: "/app/system/changelog",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * List notifications
+   *
+   * Retrieve system notifications.
+   */
+  public notifications<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).get<AppSystemNotificationsResponses, unknown, ThrowOnError>({
+      url: "/app/system/notifications",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Get system settings
+   *
+   * Retrieve system settings for the current project.
+   */
+  public settings<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).get<AppSystemSettingsResponses, unknown, ThrowOnError>({
+      url: "/app/system/settings",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Get rate limit
+   *
+   * Retrieve current rate limit info.
+   */
+  public limit<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).get<AppSystemLimitResponses, unknown, ThrowOnError>({
+      url: "/app/system/limit",
+      ...options,
+      ...params,
+    })
+  }
+
+  changelog2 = new Changelog({ client: this.client })
+
+  notifications2 = new Notifications({ client: this.client })
+
+  settings2 = new Settings({ client: this.client })
+
+  limit2 = new Limit({ client: this.client })
+}
+
+export class Github extends HeyApiClient {
+  /**
+   * List GitHub items
+   *
+   * Retrieve stored GitHub issues and PRs.
+   */
+  public list<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).get<AppIntegrationsGithubListResponses, unknown, ThrowOnError>({
+      url: "/app/integrations/github",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Create GitHub item
+   *
+   * Create a stored GitHub issue/PR entry.
+   */
+  public create<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      title?: string
+      status?: string
+      url?: string
+      repo?: string
+      kind?: "issue" | "pull"
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "body", key: "title" },
+            { in: "body", key: "status" },
+            { in: "body", key: "url" },
+            { in: "body", key: "repo" },
+            { in: "body", key: "kind" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      AppIntegrationsGithubCreateResponses,
+      AppIntegrationsGithubCreateErrors,
+      ThrowOnError
+    >({
+      url: "/app/integrations/github",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Delete GitHub item
+   *
+   * Remove a GitHub entry.
+   */
+  public remove<ThrowOnError extends boolean = false>(
+    parameters: {
+      itemID: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "itemID" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).delete<
+      AppIntegrationsGithubRemoveResponses,
+      AppIntegrationsGithubRemoveErrors,
+      ThrowOnError
+    >({
+      url: "/app/integrations/github/{itemID}",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Sync GitHub
+   *
+   * Sync GitHub issues and PRs.
+   */
+  public sync<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).post<
+      AppIntegrationsGithubSyncResponses,
+      AppIntegrationsGithubSyncErrors,
+      ThrowOnError
+    >({
+      url: "/app/integrations/github/sync",
+      ...options,
+      ...params,
+    })
+  }
+}
+
+export class Gitlab extends HeyApiClient {
+  /**
+   * List GitLab items
+   *
+   * Retrieve stored GitLab issues and merge requests.
+   */
+  public list<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).get<AppIntegrationsGitlabListResponses, unknown, ThrowOnError>({
+      url: "/app/integrations/gitlab",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Create GitLab item
+   *
+   * Create a stored GitLab issue/MR entry.
+   */
+  public create<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      title?: string
+      status?: string
+      url?: string
+      repo?: string
+      kind?: "issue" | "merge"
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "body", key: "title" },
+            { in: "body", key: "status" },
+            { in: "body", key: "url" },
+            { in: "body", key: "repo" },
+            { in: "body", key: "kind" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      AppIntegrationsGitlabCreateResponses,
+      AppIntegrationsGitlabCreateErrors,
+      ThrowOnError
+    >({
+      url: "/app/integrations/gitlab",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Delete GitLab item
+   *
+   * Remove a GitLab entry.
+   */
+  public remove<ThrowOnError extends boolean = false>(
+    parameters: {
+      itemID: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "itemID" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).delete<
+      AppIntegrationsGitlabRemoveResponses,
+      AppIntegrationsGitlabRemoveErrors,
+      ThrowOnError
+    >({
+      url: "/app/integrations/gitlab/{itemID}",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Sync GitLab
+   *
+   * Sync GitLab issues and merge requests.
+   */
+  public sync<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).post<
+      AppIntegrationsGitlabSyncResponses,
+      AppIntegrationsGitlabSyncErrors,
+      ThrowOnError
+    >({
+      url: "/app/integrations/gitlab/sync",
+      ...options,
+      ...params,
+    })
+  }
+}
+
+export class Linear extends HeyApiClient {
+  /**
+   * List Linear items
+   *
+   * Retrieve stored Linear tasks.
+   */
+  public list<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).get<AppIntegrationsLinearListResponses, unknown, ThrowOnError>({
+      url: "/app/integrations/linear",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Create Linear item
+   *
+   * Create a stored Linear issue entry.
+   */
+  public create<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      title?: string
+      status?: string
+      url?: string
+      team?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "body", key: "title" },
+            { in: "body", key: "status" },
+            { in: "body", key: "url" },
+            { in: "body", key: "team" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      AppIntegrationsLinearCreateResponses,
+      AppIntegrationsLinearCreateErrors,
+      ThrowOnError
+    >({
+      url: "/app/integrations/linear",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Delete Linear item
+   *
+   * Remove a Linear entry.
+   */
+  public remove<ThrowOnError extends boolean = false>(
+    parameters: {
+      itemID: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "itemID" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).delete<
+      AppIntegrationsLinearRemoveResponses,
+      AppIntegrationsLinearRemoveErrors,
+      ThrowOnError
+    >({
+      url: "/app/integrations/linear/{itemID}",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Sync Linear
+   *
+   * Sync Linear issues.
+   */
+  public sync<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).post<
+      AppIntegrationsLinearSyncResponses,
+      AppIntegrationsLinearSyncErrors,
+      ThrowOnError
+    >({
+      url: "/app/integrations/linear/sync",
+      ...options,
+      ...params,
+    })
+  }
+}
+
+export class Config extends HeyApiClient {
+  /**
+   * Update integration config
+   *
+   * Update integration tokens and repository settings.
+   */
+  public update<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      github?: {
+        token?: string
+        repo?: string
+      }
+      gitlab?: {
+        token?: string
+        host?: string
+        project?: string
+      }
+      linear?: {
+        token?: string
+        team?: string
+      }
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "body", key: "github" },
+            { in: "body", key: "gitlab" },
+            { in: "body", key: "linear" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).patch<
+      AppIntegrationsConfigUpdateResponses,
+      AppIntegrationsConfigUpdateErrors,
+      ThrowOnError
+    >({
+      url: "/app/integrations/config",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Get configuration
+   *
+   * Retrieve the current OpenCode configuration settings and preferences.
+   */
+  public get<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).get<ConfigGetResponses, unknown, ThrowOnError>({
+      url: "/config",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * List config providers
+   *
+   * Get a list of all configured AI providers and their default models.
+   */
+  public providers<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).get<ConfigProvidersResponses, unknown, ThrowOnError>({
+      url: "/config/providers",
+      ...options,
+      ...params,
+    })
+  }
+}
+
+export class Integrations extends HeyApiClient {
+  /**
+   * Get integration config
+   *
+   * Retrieve integration connection settings.
+   */
+  public config<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).get<AppIntegrationsConfigResponses, unknown, ThrowOnError>({
+      url: "/app/integrations/config",
+      ...options,
+      ...params,
+    })
+  }
+
+  github = new Github({ client: this.client })
+
+  gitlab = new Gitlab({ client: this.client })
+
+  linear = new Linear({ client: this.client })
+
+  config2 = new Config({ client: this.client })
+}
+
+export class App extends HeyApiClient {
+  /**
+   * Write log
+   *
+   * Write a log entry to the server logs with specified level and metadata.
+   */
+  public log<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      service?: string
+      level?: "debug" | "info" | "error" | "warn"
+      message?: string
+      extra?: {
+        [key: string]: unknown
+      }
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "body", key: "service" },
+            { in: "body", key: "level" },
+            { in: "body", key: "message" },
+            { in: "body", key: "extra" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<AppLogResponses, AppLogErrors, ThrowOnError>({
+      url: "/log",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * List agents
+   *
+   * Get a list of all available AI agents in the OpenCode system.
+   */
+  public agents<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).get<AppAgentsResponses, unknown, ThrowOnError>({
+      url: "/agent",
+      ...options,
+      ...params,
+    })
+  }
+
+  kanban = new Kanban({ client: this.client })
+
+  roadmap = new Roadmap({ client: this.client })
+
+  ideation = new Ideation({ client: this.client })
+
+  context = new Context({ client: this.client })
+
+  insights = new Insights({ client: this.client })
+
+  system = new System({ client: this.client })
+
+  integrations = new Integrations({ client: this.client })
 }
 
 export class Pty extends HeyApiClient {
@@ -519,81 +2249,6 @@ export class Pty extends HeyApiClient {
     )
     return (options?.client ?? this.client).get<PtyConnectResponses, PtyConnectErrors, ThrowOnError>({
       url: "/pty/{ptyID}/connect",
-      ...options,
-      ...params,
-    })
-  }
-}
-
-export class Config extends HeyApiClient {
-  /**
-   * Get configuration
-   *
-   * Retrieve the current OpenCode configuration settings and preferences.
-   */
-  public get<ThrowOnError extends boolean = false>(
-    parameters?: {
-      directory?: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
-    return (options?.client ?? this.client).get<ConfigGetResponses, unknown, ThrowOnError>({
-      url: "/config",
-      ...options,
-      ...params,
-    })
-  }
-
-  /**
-   * Update configuration
-   *
-   * Update OpenCode configuration settings and preferences.
-   */
-  public update<ThrowOnError extends boolean = false>(
-    parameters?: {
-      directory?: string
-      config?: Config2
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "query", key: "directory" },
-            { key: "config", map: "body" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).patch<ConfigUpdateResponses, ConfigUpdateErrors, ThrowOnError>({
-      url: "/config",
-      ...options,
-      ...params,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-        ...params.headers,
-      },
-    })
-  }
-
-  /**
-   * List config providers
-   *
-   * Get a list of all configured AI providers and their default models.
-   */
-  public providers<ThrowOnError extends boolean = false>(
-    parameters?: {
-      directory?: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
-    return (options?.client ?? this.client).get<ConfigProvidersResponses, unknown, ThrowOnError>({
-      url: "/config/providers",
       ...options,
       ...params,
     })
@@ -2203,70 +3858,6 @@ export class File extends HeyApiClient {
   }
 }
 
-export class App extends HeyApiClient {
-  /**
-   * Write log
-   *
-   * Write a log entry to the server logs with specified level and metadata.
-   */
-  public log<ThrowOnError extends boolean = false>(
-    parameters?: {
-      directory?: string
-      service?: string
-      level?: "debug" | "info" | "error" | "warn"
-      message?: string
-      extra?: {
-        [key: string]: unknown
-      }
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "query", key: "directory" },
-            { in: "body", key: "service" },
-            { in: "body", key: "level" },
-            { in: "body", key: "message" },
-            { in: "body", key: "extra" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).post<AppLogResponses, AppLogErrors, ThrowOnError>({
-      url: "/log",
-      ...options,
-      ...params,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-        ...params.headers,
-      },
-    })
-  }
-
-  /**
-   * List agents
-   *
-   * Get a list of all available AI agents in the OpenCode system.
-   */
-  public agents<ThrowOnError extends boolean = false>(
-    parameters?: {
-      directory?: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
-    return (options?.client ?? this.client).get<AppAgentsResponses, unknown, ThrowOnError>({
-      url: "/agent",
-      ...options,
-      ...params,
-    })
-  }
-}
-
 export class Auth extends HeyApiClient {
   /**
    * Remove MCP OAuth
@@ -2986,6 +4577,8 @@ export class OpencodeClient extends HeyApiClient {
 
   project = new Project({ client: this.client })
 
+  app = new App({ client: this.client })
+
   pty = new Pty({ client: this.client })
 
   config = new Config({ client: this.client })
@@ -3015,8 +4608,6 @@ export class OpencodeClient extends HeyApiClient {
   find = new Find({ client: this.client })
 
   file = new File({ client: this.client })
-
-  app = new App({ client: this.client })
 
   mcp = new Mcp({ client: this.client })
 

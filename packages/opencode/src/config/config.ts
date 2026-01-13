@@ -1041,6 +1041,36 @@ export namespace Config {
             .positive()
             .optional()
             .describe("Timeout in milliseconds for model context protocol (MCP) requests"),
+          autoSelection: z
+            .object({
+              enabled: z
+                .boolean()
+                .optional()
+                .describe("Enable automatic model and agent selection based on task analysis"),
+              confidence: z
+                .number()
+                .min(0)
+                .max(1)
+                .optional()
+                .describe("Minimum confidence threshold for auto-selection (default: 0.7)"),
+              parallelThreshold: z
+                .enum(["medium", "complex"])
+                .optional()
+                .describe("Task complexity level that triggers parallel execution (default: 'complex')"),
+              maxParallelTasks: z
+                .number()
+                .int()
+                .positive()
+                .max(12)
+                .optional()
+                .describe("Maximum number of parallel tasks (default: 3)"),
+              fallbackToDefault: z
+                .boolean()
+                .optional()
+                .describe("Fall back to default agent/model when confidence is low (default: true)"),
+            })
+            .optional()
+            .describe("Auto-claude style intelligent task analysis and resource allocation"),
         })
         .optional(),
     })

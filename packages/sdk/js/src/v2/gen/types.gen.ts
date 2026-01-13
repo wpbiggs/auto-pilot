@@ -901,6 +901,145 @@ export type NotFoundError = {
   }
 }
 
+export type KanbanTask = {
+  id: string
+  title: string
+  description: string
+  owner: string
+  status: "backlog" | "in_progress" | "review" | "done"
+  category: string
+  complexity: string
+  priority: string
+  estimate: string
+  createdAt: number
+  updatedAt: number
+}
+
+export type RoadmapFeature = {
+  id: string
+  title: string
+  phase: string
+  status: "planned" | "in_progress" | "done"
+  owner: string
+  createdAt: number
+  updatedAt: number
+}
+
+export type Roadmap = {
+  phases: Array<string>
+  features: Array<RoadmapFeature>
+}
+
+export type Idea = {
+  id: string
+  title: string
+  type: string
+  status: "active" | "dismissed" | "archived" | "converted"
+  impact: string
+  taskID?: string
+  createdAt: number
+  updatedAt: number
+}
+
+export type ContextMemory = {
+  id: string
+  title: string
+  tag: string
+  createdAt: number
+}
+
+export type Competitor = {
+  id: string
+  name: string
+  note: string
+  createdAt: number
+}
+
+export type SystemChangelog = {
+  id: string
+  title: string
+  body: string
+  type: "feature" | "fix" | "update"
+  createdAt: number
+}
+
+export type SystemNotification = {
+  id: string
+  title: string
+  body: string
+  type: "update" | "alert" | "info"
+  read: boolean
+  createdAt: number
+}
+
+export type SystemSettings = {
+  agents: {
+    autoSelect: boolean
+    defaultAgent: string
+  }
+  notifications: {
+    updates: boolean
+    errors: boolean
+  }
+  security: {
+    share: boolean
+  }
+  auth: {
+    requireApproval: boolean
+  }
+}
+
+export type SystemRateLimit = {
+  limit: number
+  used: number
+  resetAt: number
+}
+
+export type GitHubItem = {
+  id: string
+  title: string
+  status: string
+  url: string
+  repo: string
+  kind: "issue" | "pull"
+  createdAt: number
+}
+
+export type GitLabItem = {
+  id: string
+  title: string
+  status: string
+  url: string
+  repo: string
+  kind: "issue" | "merge"
+  createdAt: number
+}
+
+export type LinearItem = {
+  id: string
+  title: string
+  status: string
+  url: string
+  team: string
+  createdAt: number
+}
+
+export type IntegrationConfig = {
+  github?: {
+    token?: string
+    repo?: string
+  }
+  gitlab?: {
+    token?: string
+    host?: string
+    project?: string
+  }
+  linear?: {
+    token?: string
+    team?: string
+  }
+}
+
 /**
  * Custom keybind configurations
  */
@@ -1754,6 +1893,31 @@ export type Config = {
      * Timeout in milliseconds for model context protocol (MCP) requests
      */
     mcp_timeout?: number
+    /**
+     * Auto-claude style intelligent task analysis and resource allocation
+     */
+    autoSelection?: {
+      /**
+       * Enable automatic model and agent selection based on task analysis
+       */
+      enabled?: boolean
+      /**
+       * Minimum confidence threshold for auto-selection (default: 0.7)
+       */
+      confidence?: number
+      /**
+       * Task complexity level that triggers parallel execution (default: 'complex')
+       */
+      parallelThreshold?: "medium" | "complex"
+      /**
+       * Maximum number of parallel tasks (default: 3)
+       */
+      maxParallelTasks?: number
+      /**
+       * Fall back to default agent/model when confidence is low (default: true)
+       */
+      fallbackToDefault?: boolean
+    }
   }
 }
 
@@ -2148,6 +2312,35 @@ export type ProjectListResponses = {
 
 export type ProjectListResponse = ProjectListResponses[keyof ProjectListResponses]
 
+export type ProjectAddData = {
+  body?: {
+    directory: string
+  }
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/project"
+}
+
+export type ProjectAddErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type ProjectAddError = ProjectAddErrors[keyof ProjectAddErrors]
+
+export type ProjectAddResponses = {
+  /**
+   * Project
+   */
+  200: Project
+}
+
+export type ProjectAddResponse = ProjectAddResponses[keyof ProjectAddResponses]
+
 export type ProjectCurrentData = {
   body?: never
   path?: never
@@ -2204,6 +2397,1302 @@ export type ProjectUpdateResponses = {
 }
 
 export type ProjectUpdateResponse = ProjectUpdateResponses[keyof ProjectUpdateResponses]
+
+export type AppKanbanListData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/app/kanban"
+}
+
+export type AppKanbanListResponses = {
+  /**
+   * Kanban tasks
+   */
+  200: Array<KanbanTask>
+}
+
+export type AppKanbanListResponse = AppKanbanListResponses[keyof AppKanbanListResponses]
+
+export type AppKanbanCreateData = {
+  body?: {
+    title: string
+    description?: string
+    owner?: string
+    status?: "backlog" | "in_progress" | "review" | "done"
+    category?: string
+    complexity?: string
+    priority?: string
+    estimate?: string
+  }
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/app/kanban"
+}
+
+export type AppKanbanCreateErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type AppKanbanCreateError = AppKanbanCreateErrors[keyof AppKanbanCreateErrors]
+
+export type AppKanbanCreateResponses = {
+  /**
+   * Created task
+   */
+  200: KanbanTask
+}
+
+export type AppKanbanCreateResponse = AppKanbanCreateResponses[keyof AppKanbanCreateResponses]
+
+export type AppKanbanRemoveData = {
+  body?: never
+  path: {
+    taskID: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/app/kanban/{taskID}"
+}
+
+export type AppKanbanRemoveErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type AppKanbanRemoveError = AppKanbanRemoveErrors[keyof AppKanbanRemoveErrors]
+
+export type AppKanbanRemoveResponses = {
+  /**
+   * Deleted
+   */
+  200: boolean
+}
+
+export type AppKanbanRemoveResponse = AppKanbanRemoveResponses[keyof AppKanbanRemoveResponses]
+
+export type AppKanbanUpdateData = {
+  body?: {
+    title?: string
+    description?: string
+    owner?: string
+    status?: "backlog" | "in_progress" | "review" | "done"
+    category?: string
+    complexity?: string
+    priority?: string
+    estimate?: string
+  }
+  path: {
+    taskID: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/app/kanban/{taskID}"
+}
+
+export type AppKanbanUpdateErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type AppKanbanUpdateError = AppKanbanUpdateErrors[keyof AppKanbanUpdateErrors]
+
+export type AppKanbanUpdateResponses = {
+  /**
+   * Updated task
+   */
+  200: KanbanTask
+}
+
+export type AppKanbanUpdateResponse = AppKanbanUpdateResponses[keyof AppKanbanUpdateResponses]
+
+export type AppRoadmapGetData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/app/roadmap"
+}
+
+export type AppRoadmapGetResponses = {
+  /**
+   * Roadmap
+   */
+  200: Roadmap
+}
+
+export type AppRoadmapGetResponse = AppRoadmapGetResponses[keyof AppRoadmapGetResponses]
+
+export type AppRoadmapCreateData = {
+  body?: {
+    title: string
+    phase: string
+    owner?: string
+  }
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/app/roadmap"
+}
+
+export type AppRoadmapCreateErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type AppRoadmapCreateError = AppRoadmapCreateErrors[keyof AppRoadmapCreateErrors]
+
+export type AppRoadmapCreateResponses = {
+  /**
+   * Created feature
+   */
+  200: RoadmapFeature
+}
+
+export type AppRoadmapCreateResponse = AppRoadmapCreateResponses[keyof AppRoadmapCreateResponses]
+
+export type AppRoadmapRemoveData = {
+  body?: never
+  path: {
+    featureID: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/app/roadmap/{featureID}"
+}
+
+export type AppRoadmapRemoveErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type AppRoadmapRemoveError = AppRoadmapRemoveErrors[keyof AppRoadmapRemoveErrors]
+
+export type AppRoadmapRemoveResponses = {
+  /**
+   * Deleted
+   */
+  200: boolean
+}
+
+export type AppRoadmapRemoveResponse = AppRoadmapRemoveResponses[keyof AppRoadmapRemoveResponses]
+
+export type AppRoadmapUpdateData = {
+  body?: {
+    title?: string
+    phase?: string
+    status?: "planned" | "in_progress" | "done"
+    owner?: string
+  }
+  path: {
+    featureID: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/app/roadmap/{featureID}"
+}
+
+export type AppRoadmapUpdateErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type AppRoadmapUpdateError = AppRoadmapUpdateErrors[keyof AppRoadmapUpdateErrors]
+
+export type AppRoadmapUpdateResponses = {
+  /**
+   * Updated feature
+   */
+  200: RoadmapFeature
+}
+
+export type AppRoadmapUpdateResponse = AppRoadmapUpdateResponses[keyof AppRoadmapUpdateResponses]
+
+export type AppRoadmapExportData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    format?: "json" | "csv" | "md"
+  }
+  url: "/app/roadmap/export"
+}
+
+export type AppRoadmapExportResponses = {
+  /**
+   * Exported roadmap
+   */
+  200: string
+}
+
+export type AppRoadmapExportResponse = AppRoadmapExportResponses[keyof AppRoadmapExportResponses]
+
+export type AppIdeationListData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/app/ideation"
+}
+
+export type AppIdeationListResponses = {
+  /**
+   * Ideas
+   */
+  200: Array<Idea>
+}
+
+export type AppIdeationListResponse = AppIdeationListResponses[keyof AppIdeationListResponses]
+
+export type AppIdeationCreateData = {
+  body?: {
+    title: string
+    type: string
+    impact?: string
+  }
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/app/ideation"
+}
+
+export type AppIdeationCreateErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type AppIdeationCreateError = AppIdeationCreateErrors[keyof AppIdeationCreateErrors]
+
+export type AppIdeationCreateResponses = {
+  /**
+   * Created idea
+   */
+  200: Idea
+}
+
+export type AppIdeationCreateResponse = AppIdeationCreateResponses[keyof AppIdeationCreateResponses]
+
+export type AppIdeationRemoveData = {
+  body?: never
+  path: {
+    ideaID: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/app/ideation/{ideaID}"
+}
+
+export type AppIdeationRemoveErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type AppIdeationRemoveError = AppIdeationRemoveErrors[keyof AppIdeationRemoveErrors]
+
+export type AppIdeationRemoveResponses = {
+  /**
+   * Deleted
+   */
+  200: boolean
+}
+
+export type AppIdeationRemoveResponse = AppIdeationRemoveResponses[keyof AppIdeationRemoveResponses]
+
+export type AppIdeationUpdateData = {
+  body?: {
+    title?: string
+    type?: string
+    impact?: string
+    status?: "active" | "dismissed" | "archived" | "converted"
+  }
+  path: {
+    ideaID: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/app/ideation/{ideaID}"
+}
+
+export type AppIdeationUpdateErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type AppIdeationUpdateError = AppIdeationUpdateErrors[keyof AppIdeationUpdateErrors]
+
+export type AppIdeationUpdateResponses = {
+  /**
+   * Updated idea
+   */
+  200: Idea
+}
+
+export type AppIdeationUpdateResponse = AppIdeationUpdateResponses[keyof AppIdeationUpdateResponses]
+
+export type AppIdeationConvertData = {
+  body?: never
+  path: {
+    ideaID: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/app/ideation/{ideaID}/convert"
+}
+
+export type AppIdeationConvertErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type AppIdeationConvertError = AppIdeationConvertErrors[keyof AppIdeationConvertErrors]
+
+export type AppIdeationConvertResponses = {
+  /**
+   * Converted
+   */
+  200: {
+    idea: Idea
+    task: KanbanTask
+  }
+}
+
+export type AppIdeationConvertResponse = AppIdeationConvertResponses[keyof AppIdeationConvertResponses]
+
+export type AppContextIndexData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    query?: string
+  }
+  url: "/app/context/index"
+}
+
+export type AppContextIndexResponses = {
+  /**
+   * Index results
+   */
+  200: Array<string>
+}
+
+export type AppContextIndexResponse = AppContextIndexResponses[keyof AppContextIndexResponses]
+
+export type AppContextMemoriesData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    query?: string
+  }
+  url: "/app/context/memories"
+}
+
+export type AppContextMemoriesResponses = {
+  /**
+   * Memories
+   */
+  200: Array<ContextMemory>
+}
+
+export type AppContextMemoriesResponse = AppContextMemoriesResponses[keyof AppContextMemoriesResponses]
+
+export type AppContextCreateData = {
+  body?: {
+    title: string
+    tag?: string
+  }
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/app/context/memories"
+}
+
+export type AppContextCreateErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type AppContextCreateError = AppContextCreateErrors[keyof AppContextCreateErrors]
+
+export type AppContextCreateResponses = {
+  /**
+   * Memory
+   */
+  200: ContextMemory
+}
+
+export type AppContextCreateResponse = AppContextCreateResponses[keyof AppContextCreateResponses]
+
+export type AppContextRemoveData = {
+  body?: never
+  path: {
+    memoryID: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/app/context/memories/{memoryID}"
+}
+
+export type AppContextRemoveErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type AppContextRemoveError = AppContextRemoveErrors[keyof AppContextRemoveErrors]
+
+export type AppContextRemoveResponses = {
+  /**
+   * Deleted
+   */
+  200: boolean
+}
+
+export type AppContextRemoveResponse = AppContextRemoveResponses[keyof AppContextRemoveResponses]
+
+export type AppInsightsCompetitorsData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/app/insights/competitors"
+}
+
+export type AppInsightsCompetitorsResponses = {
+  /**
+   * Competitors
+   */
+  200: Array<Competitor>
+}
+
+export type AppInsightsCompetitorsResponse = AppInsightsCompetitorsResponses[keyof AppInsightsCompetitorsResponses]
+
+export type AppInsightsCreateData = {
+  body?: {
+    name: string
+    note?: string
+  }
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/app/insights/competitors"
+}
+
+export type AppInsightsCreateErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type AppInsightsCreateError = AppInsightsCreateErrors[keyof AppInsightsCreateErrors]
+
+export type AppInsightsCreateResponses = {
+  /**
+   * Competitor
+   */
+  200: Competitor
+}
+
+export type AppInsightsCreateResponse = AppInsightsCreateResponses[keyof AppInsightsCreateResponses]
+
+export type AppInsightsRemoveData = {
+  body?: never
+  path: {
+    competitorID: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/app/insights/competitors/{competitorID}"
+}
+
+export type AppInsightsRemoveErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type AppInsightsRemoveError = AppInsightsRemoveErrors[keyof AppInsightsRemoveErrors]
+
+export type AppInsightsRemoveResponses = {
+  /**
+   * Deleted
+   */
+  200: boolean
+}
+
+export type AppInsightsRemoveResponse = AppInsightsRemoveResponses[keyof AppInsightsRemoveResponses]
+
+export type AppSystemChangelogData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/app/system/changelog"
+}
+
+export type AppSystemChangelogResponses = {
+  /**
+   * Changelog
+   */
+  200: Array<SystemChangelog>
+}
+
+export type AppSystemChangelogResponse = AppSystemChangelogResponses[keyof AppSystemChangelogResponses]
+
+export type AppSystemChangelogCreateData = {
+  body?: {
+    title: string
+    body: string
+    type: "feature" | "fix" | "update"
+  }
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/app/system/changelog"
+}
+
+export type AppSystemChangelogCreateErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type AppSystemChangelogCreateError = AppSystemChangelogCreateErrors[keyof AppSystemChangelogCreateErrors]
+
+export type AppSystemChangelogCreateResponses = {
+  /**
+   * Changelog entry
+   */
+  200: SystemChangelog
+}
+
+export type AppSystemChangelogCreateResponse =
+  AppSystemChangelogCreateResponses[keyof AppSystemChangelogCreateResponses]
+
+export type AppSystemChangelogRemoveData = {
+  body?: never
+  path: {
+    entryID: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/app/system/changelog/{entryID}"
+}
+
+export type AppSystemChangelogRemoveErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type AppSystemChangelogRemoveError = AppSystemChangelogRemoveErrors[keyof AppSystemChangelogRemoveErrors]
+
+export type AppSystemChangelogRemoveResponses = {
+  /**
+   * Deleted
+   */
+  200: boolean
+}
+
+export type AppSystemChangelogRemoveResponse =
+  AppSystemChangelogRemoveResponses[keyof AppSystemChangelogRemoveResponses]
+
+export type AppSystemNotificationsData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/app/system/notifications"
+}
+
+export type AppSystemNotificationsResponses = {
+  /**
+   * Notifications
+   */
+  200: Array<SystemNotification>
+}
+
+export type AppSystemNotificationsResponse = AppSystemNotificationsResponses[keyof AppSystemNotificationsResponses]
+
+export type AppSystemNotificationsCreateData = {
+  body?: {
+    title: string
+    body: string
+    type: "update" | "alert" | "info"
+  }
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/app/system/notifications"
+}
+
+export type AppSystemNotificationsCreateErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type AppSystemNotificationsCreateError =
+  AppSystemNotificationsCreateErrors[keyof AppSystemNotificationsCreateErrors]
+
+export type AppSystemNotificationsCreateResponses = {
+  /**
+   * Notification
+   */
+  200: SystemNotification
+}
+
+export type AppSystemNotificationsCreateResponse =
+  AppSystemNotificationsCreateResponses[keyof AppSystemNotificationsCreateResponses]
+
+export type AppSystemNotificationsDismissData = {
+  body?: never
+  path: {
+    noteID: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/app/system/notifications/{noteID}"
+}
+
+export type AppSystemNotificationsDismissErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type AppSystemNotificationsDismissError =
+  AppSystemNotificationsDismissErrors[keyof AppSystemNotificationsDismissErrors]
+
+export type AppSystemNotificationsDismissResponses = {
+  /**
+   * Notification
+   */
+  200: SystemNotification
+}
+
+export type AppSystemNotificationsDismissResponse =
+  AppSystemNotificationsDismissResponses[keyof AppSystemNotificationsDismissResponses]
+
+export type AppSystemSettingsData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/app/system/settings"
+}
+
+export type AppSystemSettingsResponses = {
+  /**
+   * Settings
+   */
+  200: SystemSettings
+}
+
+export type AppSystemSettingsResponse = AppSystemSettingsResponses[keyof AppSystemSettingsResponses]
+
+export type AppSystemSettingsUpdateData = {
+  body?: {
+    agents?: {
+      autoSelect: boolean
+      defaultAgent: string
+    }
+    notifications?: {
+      updates: boolean
+      errors: boolean
+    }
+    security?: {
+      share: boolean
+    }
+    auth?: {
+      requireApproval: boolean
+    }
+  }
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/app/system/settings"
+}
+
+export type AppSystemSettingsUpdateErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type AppSystemSettingsUpdateError = AppSystemSettingsUpdateErrors[keyof AppSystemSettingsUpdateErrors]
+
+export type AppSystemSettingsUpdateResponses = {
+  /**
+   * Settings
+   */
+  200: SystemSettings
+}
+
+export type AppSystemSettingsUpdateResponse = AppSystemSettingsUpdateResponses[keyof AppSystemSettingsUpdateResponses]
+
+export type AppSystemLimitData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/app/system/limit"
+}
+
+export type AppSystemLimitResponses = {
+  /**
+   * Rate limit
+   */
+  200: SystemRateLimit
+}
+
+export type AppSystemLimitResponse = AppSystemLimitResponses[keyof AppSystemLimitResponses]
+
+export type AppSystemLimitUpdateData = {
+  body?: {
+    limit?: number
+    used?: number
+    resetAt?: number
+  }
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/app/system/limit"
+}
+
+export type AppSystemLimitUpdateErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type AppSystemLimitUpdateError = AppSystemLimitUpdateErrors[keyof AppSystemLimitUpdateErrors]
+
+export type AppSystemLimitUpdateResponses = {
+  /**
+   * Rate limit
+   */
+  200: SystemRateLimit
+}
+
+export type AppSystemLimitUpdateResponse = AppSystemLimitUpdateResponses[keyof AppSystemLimitUpdateResponses]
+
+export type AppIntegrationsGithubListData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/app/integrations/github"
+}
+
+export type AppIntegrationsGithubListResponses = {
+  /**
+   * GitHub items
+   */
+  200: Array<GitHubItem>
+}
+
+export type AppIntegrationsGithubListResponse =
+  AppIntegrationsGithubListResponses[keyof AppIntegrationsGithubListResponses]
+
+export type AppIntegrationsGithubCreateData = {
+  body?: {
+    title: string
+    status: string
+    url: string
+    repo: string
+    kind: "issue" | "pull"
+  }
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/app/integrations/github"
+}
+
+export type AppIntegrationsGithubCreateErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type AppIntegrationsGithubCreateError =
+  AppIntegrationsGithubCreateErrors[keyof AppIntegrationsGithubCreateErrors]
+
+export type AppIntegrationsGithubCreateResponses = {
+  /**
+   * GitHub item
+   */
+  200: GitHubItem
+}
+
+export type AppIntegrationsGithubCreateResponse =
+  AppIntegrationsGithubCreateResponses[keyof AppIntegrationsGithubCreateResponses]
+
+export type AppIntegrationsGithubRemoveData = {
+  body?: never
+  path: {
+    itemID: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/app/integrations/github/{itemID}"
+}
+
+export type AppIntegrationsGithubRemoveErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type AppIntegrationsGithubRemoveError =
+  AppIntegrationsGithubRemoveErrors[keyof AppIntegrationsGithubRemoveErrors]
+
+export type AppIntegrationsGithubRemoveResponses = {
+  /**
+   * Deleted
+   */
+  200: boolean
+}
+
+export type AppIntegrationsGithubRemoveResponse =
+  AppIntegrationsGithubRemoveResponses[keyof AppIntegrationsGithubRemoveResponses]
+
+export type AppIntegrationsGitlabListData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/app/integrations/gitlab"
+}
+
+export type AppIntegrationsGitlabListResponses = {
+  /**
+   * GitLab items
+   */
+  200: Array<GitLabItem>
+}
+
+export type AppIntegrationsGitlabListResponse =
+  AppIntegrationsGitlabListResponses[keyof AppIntegrationsGitlabListResponses]
+
+export type AppIntegrationsGitlabCreateData = {
+  body?: {
+    title: string
+    status: string
+    url: string
+    repo: string
+    kind: "issue" | "merge"
+  }
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/app/integrations/gitlab"
+}
+
+export type AppIntegrationsGitlabCreateErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type AppIntegrationsGitlabCreateError =
+  AppIntegrationsGitlabCreateErrors[keyof AppIntegrationsGitlabCreateErrors]
+
+export type AppIntegrationsGitlabCreateResponses = {
+  /**
+   * GitLab item
+   */
+  200: GitLabItem
+}
+
+export type AppIntegrationsGitlabCreateResponse =
+  AppIntegrationsGitlabCreateResponses[keyof AppIntegrationsGitlabCreateResponses]
+
+export type AppIntegrationsGitlabRemoveData = {
+  body?: never
+  path: {
+    itemID: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/app/integrations/gitlab/{itemID}"
+}
+
+export type AppIntegrationsGitlabRemoveErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type AppIntegrationsGitlabRemoveError =
+  AppIntegrationsGitlabRemoveErrors[keyof AppIntegrationsGitlabRemoveErrors]
+
+export type AppIntegrationsGitlabRemoveResponses = {
+  /**
+   * Deleted
+   */
+  200: boolean
+}
+
+export type AppIntegrationsGitlabRemoveResponse =
+  AppIntegrationsGitlabRemoveResponses[keyof AppIntegrationsGitlabRemoveResponses]
+
+export type AppIntegrationsLinearListData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/app/integrations/linear"
+}
+
+export type AppIntegrationsLinearListResponses = {
+  /**
+   * Linear items
+   */
+  200: Array<LinearItem>
+}
+
+export type AppIntegrationsLinearListResponse =
+  AppIntegrationsLinearListResponses[keyof AppIntegrationsLinearListResponses]
+
+export type AppIntegrationsLinearCreateData = {
+  body?: {
+    title: string
+    status: string
+    url: string
+    team: string
+  }
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/app/integrations/linear"
+}
+
+export type AppIntegrationsLinearCreateErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type AppIntegrationsLinearCreateError =
+  AppIntegrationsLinearCreateErrors[keyof AppIntegrationsLinearCreateErrors]
+
+export type AppIntegrationsLinearCreateResponses = {
+  /**
+   * Linear item
+   */
+  200: LinearItem
+}
+
+export type AppIntegrationsLinearCreateResponse =
+  AppIntegrationsLinearCreateResponses[keyof AppIntegrationsLinearCreateResponses]
+
+export type AppIntegrationsLinearRemoveData = {
+  body?: never
+  path: {
+    itemID: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/app/integrations/linear/{itemID}"
+}
+
+export type AppIntegrationsLinearRemoveErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type AppIntegrationsLinearRemoveError =
+  AppIntegrationsLinearRemoveErrors[keyof AppIntegrationsLinearRemoveErrors]
+
+export type AppIntegrationsLinearRemoveResponses = {
+  /**
+   * Deleted
+   */
+  200: boolean
+}
+
+export type AppIntegrationsLinearRemoveResponse =
+  AppIntegrationsLinearRemoveResponses[keyof AppIntegrationsLinearRemoveResponses]
+
+export type AppIntegrationsConfigData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/app/integrations/config"
+}
+
+export type AppIntegrationsConfigResponses = {
+  /**
+   * Config
+   */
+  200: IntegrationConfig
+}
+
+export type AppIntegrationsConfigResponse = AppIntegrationsConfigResponses[keyof AppIntegrationsConfigResponses]
+
+export type AppIntegrationsConfigUpdateData = {
+  body?: {
+    github?: {
+      token?: string
+      repo?: string
+    }
+    gitlab?: {
+      token?: string
+      host?: string
+      project?: string
+    }
+    linear?: {
+      token?: string
+      team?: string
+    }
+  }
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/app/integrations/config"
+}
+
+export type AppIntegrationsConfigUpdateErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type AppIntegrationsConfigUpdateError =
+  AppIntegrationsConfigUpdateErrors[keyof AppIntegrationsConfigUpdateErrors]
+
+export type AppIntegrationsConfigUpdateResponses = {
+  /**
+   * Config
+   */
+  200: IntegrationConfig
+}
+
+export type AppIntegrationsConfigUpdateResponse =
+  AppIntegrationsConfigUpdateResponses[keyof AppIntegrationsConfigUpdateResponses]
+
+export type AppIntegrationsGithubSyncData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/app/integrations/github/sync"
+}
+
+export type AppIntegrationsGithubSyncErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type AppIntegrationsGithubSyncError = AppIntegrationsGithubSyncErrors[keyof AppIntegrationsGithubSyncErrors]
+
+export type AppIntegrationsGithubSyncResponses = {
+  /**
+   * GitHub items
+   */
+  200: Array<GitHubItem>
+}
+
+export type AppIntegrationsGithubSyncResponse =
+  AppIntegrationsGithubSyncResponses[keyof AppIntegrationsGithubSyncResponses]
+
+export type AppIntegrationsGitlabSyncData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/app/integrations/gitlab/sync"
+}
+
+export type AppIntegrationsGitlabSyncErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type AppIntegrationsGitlabSyncError = AppIntegrationsGitlabSyncErrors[keyof AppIntegrationsGitlabSyncErrors]
+
+export type AppIntegrationsGitlabSyncResponses = {
+  /**
+   * GitLab items
+   */
+  200: Array<GitLabItem>
+}
+
+export type AppIntegrationsGitlabSyncResponse =
+  AppIntegrationsGitlabSyncResponses[keyof AppIntegrationsGitlabSyncResponses]
+
+export type AppIntegrationsLinearSyncData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/app/integrations/linear/sync"
+}
+
+export type AppIntegrationsLinearSyncErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type AppIntegrationsLinearSyncError = AppIntegrationsLinearSyncErrors[keyof AppIntegrationsLinearSyncErrors]
+
+export type AppIntegrationsLinearSyncResponses = {
+  /**
+   * Linear items
+   */
+  200: Array<LinearItem>
+}
+
+export type AppIntegrationsLinearSyncResponse =
+  AppIntegrationsLinearSyncResponses[keyof AppIntegrationsLinearSyncResponses]
 
 export type PtyListData = {
   body?: never

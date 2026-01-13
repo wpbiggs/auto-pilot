@@ -25,6 +25,7 @@ import { Flag } from "@/flag/flag"
 import { Log } from "@/util/log"
 import { LspTool } from "./lsp"
 import { Truncate } from "./truncation"
+import { AutoTaskTool } from "../auto/auto-interface"
 
 export namespace ToolRegistry {
   const log = Log.create({ service: "tool.registry" })
@@ -109,6 +110,7 @@ export namespace ToolRegistry {
       SkillTool,
       ...(Flag.OPENCODE_EXPERIMENTAL_LSP_TOOL ? [LspTool] : []),
       ...(config.experimental?.batch_tool === true ? [BatchTool] : []),
+      ...(config.experimental?.autoSelection?.enabled ? [AutoTaskTool] : []),
       ...custom,
     ]
   }

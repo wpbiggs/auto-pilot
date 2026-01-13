@@ -1,0 +1,64 @@
+import { defineConfig } from "vite"
+import react from "@vitejs/plugin-react"
+
+export default defineConfig({
+  plugins: [react()],
+  server: {
+    port: 3000,
+    host: true,
+    proxy: {
+      "/app": {
+        target: "http://localhost:4096",
+        changeOrigin: true,
+      },
+      "/agent": {
+        target: "http://localhost:4096",
+        changeOrigin: true,
+      },
+      "/file": {
+        target: "http://localhost:4096",
+        changeOrigin: true,
+      },
+      "/session": {
+        target: "http://localhost:4096",
+        changeOrigin: true,
+      },
+      "/provider": {
+        target: "http://localhost:4096",
+        changeOrigin: true,
+      },
+      "/project": {
+        target: "http://localhost:4096",
+        changeOrigin: true,
+      },
+      "/experimental": {
+        target: "http://localhost:4096",
+        changeOrigin: true,
+      },
+      "/path": {
+        target: "http://localhost:4096",
+        changeOrigin: true,
+      },
+      "/mcp": {
+        target: "http://localhost:4096",
+        changeOrigin: true,
+      },
+      "/lsp": {
+        target: "http://localhost:4096",
+        changeOrigin: true,
+      },
+      "/formatter": {
+        target: "http://localhost:4096",
+        changeOrigin: true,
+      },
+      "/config": {
+        target: "http://localhost:4096",
+        changeOrigin: true,
+      },
+      "/vcs": {
+        target: "http://localhost:4096",
+        changeOrigin: true,
+      },
+    },
+  },
+})

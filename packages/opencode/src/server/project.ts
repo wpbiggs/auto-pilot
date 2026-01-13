@@ -7,6 +7,27 @@ import z from "zod"
 import { errors } from "./error"
 
 export const ProjectRoute = new Hono()
+  .post(
+    "/",
+    describeRoute({
+      summary: "Add project",
+      description: "Register a new project from a directory path.",
+      operationId: "project.add",
+      responses: {
+        200: {
+          description: "Project",
+          content: { "application/json": { schema: resolver(Project.Info) } },
+        },
+        ...errors(400),
+      },
+    }),
+    validator("json", z.object({ directory: z.string() })),
+    async (c) => {
+      const directory = c.req.valid("json").directory
+      const result = await Project.fromDirectory(directory)
+      return c.json(result.project)
+    },
+  )
   .get(
     "/",
     describeRoute({
