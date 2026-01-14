@@ -59,6 +59,10 @@ export default defineConfig({
         target: "http://localhost:4096",
         changeOrigin: true,
       },
+      "/find": {
+        target: "http://localhost:4096",
+        changeOrigin: true,
+      },
     },
   },
 })

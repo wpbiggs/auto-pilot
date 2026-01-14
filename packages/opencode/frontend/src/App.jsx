@@ -34,7 +34,7 @@ function Sidebar({ isOpen, onToggle, activeView, onViewChange, onNewTask }) {
           )}
           <button
             onClick={onToggle}
-            className="ml-auto text-gray-400 hover:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 rounded p-1"
+            className="ml-auto text-gray-400 hover:text-white hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded-lg p-1.5 transition-colors"
             aria-label={isOpen ? "Collapse Sidebar" : "Expand Sidebar"}
           >
             {isOpen ? "◀" : "▶"}
@@ -47,17 +47,19 @@ function Sidebar({ isOpen, onToggle, activeView, onViewChange, onNewTask }) {
               <button
                 key={item.id}
                 onClick={() => onViewChange(item.id)}
-                className={`w-full text-left p-3 rounded-lg transition-colors flex items-center gap-3 focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                  activeView === item.id ? "bg-blue-600 text-white" : "hover:bg-gray-800 text-gray-300"
+                className={`w-full text-left p-3 rounded-xl transition-all duration-200 flex items-center gap-3 focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                  activeView === item.id 
+                    ? "bg-blue-600 text-white shadow-md shadow-blue-900/20 translate-x-1" 
+                    : "hover:bg-gray-800 text-gray-400 hover:text-gray-200"
                 }`}
                 aria-current={activeView === item.id ? "page" : undefined}
               >
-                <span className="text-xl" aria-hidden="true">
+                <span className={`text-xl transition-transform ${activeView === item.id ? "scale-110" : ""}`} aria-hidden="true">
                   {item.icon}
                 </span>
-                <div className="flex-1">
-                  <div className="text-sm font-medium">{item.label}</div>
-                  <div className="text-xs text-gray-400">{item.description}</div>
+                <div className="flex-1 min-w-0">
+                  <div className={`text-sm ${activeView === item.id ? "font-bold" : "font-medium"}`}>{item.label}</div>
+                  <div className={`text-xs truncate ${activeView === item.id ? "text-blue-100" : "text-gray-500"}`}>{item.description}</div>
                 </div>
               </button>
             ))}
@@ -739,7 +741,7 @@ function TaskEditDialog({ task, onClose, onSave }) {
   )
 }
 
-function FileDrawer({ task, onClose }) {
+function FileDrawer({ task, onClose, directory }) {
   const [path, setPath] = useState(".")
   const [items, setItems] = useState([])
   const [file, setFile] = useState(null)
@@ -787,11 +789,19 @@ function FileDrawer({ task, onClose }) {
       try {
         const url = new URL("/file", window.location.origin)
         url.searchParams.set("path", path)
+        if (directory) url.searchParams.set("directory", directory)
         const response = await fetch(url.toString())
         
         if (!response.ok) {
            const err = await response.json().catch(() => ({}))
-           throw new Error(err.message || `Failed to list files: ${response.statusText}`)
+           let message = err.message || `Failed to list files: ${response.statusText}`
+           
+           // Strip stack trace if present in message (rare but possible in some dev servers)
+           if (message.includes(" at ")) {
+              message = message.split("\n")[0]
+           }
+           
+           throw new Error(message)
         }
         
         const data = await response.json()
@@ -806,7 +816,7 @@ function FileDrawer({ task, onClose }) {
     }
 
     load()
-  }, [path, task])
+  }, [directory, path, task])
 
   const handleOpen = async (item) => {
     if (item.type === "directory") {
@@ -819,11 +829,19 @@ function FileDrawer({ task, onClose }) {
     try {
       const url = new URL("/file/content", window.location.origin)
       url.searchParams.set("path", item.path)
+      if (directory) url.searchParams.set("directory", directory)
       const response = await fetch(url.toString())
       
       if (!response.ok) {
          const err = await response.json().catch(() => ({}))
-         throw new Error(err.message || `Failed to read file: ${response.statusText}`)
+         let message = err.message || `Failed to read file: ${response.statusText}`
+         
+         // Strip stack trace if present
+         if (message.includes(" at ")) {
+            message = message.split("\n")[0]
+         }
+         
+         throw new Error(message)
       }
 
       const data = await response.json()
@@ -838,10 +856,19 @@ function FileDrawer({ task, onClose }) {
   }
 
   const handleNavigateUp = () => {
-     if (path === ".") return
-     const parts = path.split("/")
+     if (path === "." || path === "/") return
+     
+     // Normalize to avoid issues with trailing slashes
+     const current = path.replace(/\/+$/, "")
+     if (!current.includes("/")) {
+       setPath(".")
+       return
+     }
+
+     const parts = current.split("/")
      parts.pop()
-     setPath(parts.length > 0 ? parts.join("/") : ".")
+     const parent = parts.length > 0 ? parts.join("/") : "."
+     setPath(parent)
   }
 
   if (!task) return null
@@ -1110,24 +1137,151 @@ function Kanban({ tasks, onCreate, onMove, onEdit, onFiles, onWizard }) {
   )
 }
 
-function Roadmap({ roadmap, onCreate, onToggle, onExport, onGenerate, onViewLogs, generating }) {
+
+function RoadmapDetailDialog({ feature, onClose, onUpdate, onConvert }) {
+  const [notes, setNotes] = useState(feature.notes || "")
+  const [priority, setPriority] = useState(feature.priority || "Medium")
+  const [impact, setImpact] = useState(feature.impact || "Medium")
+
+  const handleSave = () => {
+    onUpdate(feature.id, { notes, priority, impact })
+    onClose()
+  }
+
+  return (
+    <div
+      className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4 backdrop-blur-sm"
+      role="dialog"
+      aria-modal="true"
+    >
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-lg p-6 space-y-4">
+        <div className="flex items-center justify-between">
+          <h3 className="text-xl font-bold text-gray-900">{feature.title}</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+            ✕
+          </button>
+        </div>
+
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="text-xs text-gray-500 font-medium block mb-1">Status</label>
+            <span
+              className={`text-xs px-2 py-1 rounded-full font-medium ${
+                feature.status === "done"
+                  ? "bg-green-100 text-green-700"
+                  : feature.status === "in_progress"
+                    ? "bg-blue-100 text-blue-700"
+                    : "bg-gray-100 text-gray-700"
+              }`}
+            >
+              {feature.status.replace("_", " ")}
+            </span>
+          </div>
+          <div>
+            <label className="text-xs text-gray-500 font-medium block mb-1">Phase</label>
+            <span className="text-sm text-gray-900">{feature.phase}</span>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="text-xs text-gray-500 font-medium block mb-1">Priority</label>
+            <select
+              value={priority}
+              onChange={(e) => setPriority(e.target.value)}
+              className="w-full border border-gray-300 rounded px-2 py-1 text-sm"
+            >
+              <option value="Low">Low</option>
+              <option value="Medium">Medium</option>
+              <option value="High">High</option>
+              <option value="Critical">Critical</option>
+            </select>
+          </div>
+          <div>
+            <label className="text-xs text-gray-500 font-medium block mb-1">Impact</label>
+            <select
+              value={impact}
+              onChange={(e) => setImpact(e.target.value)}
+              className="w-full border border-gray-300 rounded px-2 py-1 text-sm"
+            >
+              <option value="Low">Low</option>
+              <option value="Medium">Medium</option>
+              <option value="High">High</option>
+            </select>
+          </div>
+        </div>
+
+        <div>
+          <label className="text-xs text-gray-500 font-medium block mb-1">Notes / Rationale</label>
+          <textarea
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            className="w-full border border-gray-300 rounded-lg p-3 text-sm h-32 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+            placeholder="Add details about this feature..."
+          />
+        </div>
+
+        <div className="flex items-center justify-between pt-2">
+          <button
+            onClick={() => onConvert(feature.id)}
+            className="text-sm text-blue-600 hover:text-blue-800 font-medium flex items-center gap-1"
+          >
+            ⚡ Convert to Task
+          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={onClose}
+              className="px-4 py-2 border border-gray-200 rounded-lg text-sm hover:bg-gray-50"
+            >
+              Cancel
+            </button>
+            <button onClick={handleSave} className="gradient-bg text-white px-4 py-2 rounded-lg text-sm font-medium">
+              Save Changes
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function Roadmap({ roadmap, onCreate, onUpdate, onConvert, onExport, onGenerate, onViewLogs, generating }) {
+  const [activeTab, setActiveTab] = useState("phases")
   const [title, setTitle] = useState("")
   const [phase, setPhase] = useState(roadmap.phases[0] ?? "Foundation")
+  const [priority, setPriority] = useState("Medium")
   const [withCompetitors, setWithCompetitors] = useState(false)
   const [genOpen, setGenOpen] = useState(false)
+  const [detailFeature, setDetailFeature] = useState(null)
 
-  const progress = roadmap.features.length
-    ? Math.round(
-        (roadmap.features.filter((feature) => feature.status === "done").length / roadmap.features.length) * 100,
-      )
-    : 0
+  const stats = useMemo(() => {
+    const total = roadmap.features.length
+    const done = roadmap.features.filter((f) => f.status === "done").length
+    const high = roadmap.features.filter((f) => ["High", "Critical"].includes(f.priority)).length
+    const progress = total ? Math.round((done / total) * 100) : 0
+    return { total, done, high, progress }
+  }, [roadmap.features])
 
   const handleAdd = async () => {
     if (!title.trim()) return
-    await onCreate({ title: title.trim(), phase })
+    await onCreate({ title: title.trim(), phase, priority, status: "planned" })
     setTitle("")
     setPhase(roadmap.phases[0] ?? "Foundation")
+    setPriority("Medium")
   }
+
+  const filteredFeatures = useMemo(() => {
+    if (activeTab === "phases") return roadmap.features
+    if (activeTab === "all") return roadmap.features
+    if (activeTab === "kanban") return roadmap.features
+    if (activeTab === "priority") {
+      return [...roadmap.features].sort((a, b) => {
+        const pMap = { Critical: 4, High: 3, Medium: 2, Low: 1 }
+        return (pMap[b.priority] || 2) - (pMap[a.priority] || 2)
+      })
+    }
+    return roadmap.features
+  }, [roadmap.features, activeTab])
 
   return (
     <div className="space-y-6">
@@ -1136,62 +1290,64 @@ function Roadmap({ roadmap, onCreate, onToggle, onExport, onGenerate, onViewLogs
           <h2 className="text-2xl font-bold text-gray-900">🗺️ Roadmap</h2>
           <p className="text-gray-600">Plan releases and translate ideas into milestones.</p>
         </div>
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="text-right">
-            <div className="text-sm text-gray-500">Overall progress</div>
-            <div className="text-xl font-bold text-green-600" aria-label={`${progress}% completed`}>
-              {progress}%
-            </div>
+        <div className="flex gap-4">
+          <div className="text-center">
+            <div className="text-xs text-gray-500">Progress</div>
+            <div className="font-bold text-green-600">{stats.progress}%</div>
           </div>
-          <label className="flex items-center gap-2 text-xs text-gray-600 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={withCompetitors}
-              onChange={(event) => setWithCompetitors(event.target.checked)}
-              className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-            />
-            Include competitor analysis
-          </label>
-          <button
-            onClick={() => setGenOpen(true)}
-            disabled={generating}
-            className={`text-xs px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-              generating ? "opacity-60 cursor-not-allowed" : "hover:bg-gray-50"
-            }`}
-          >
-            {generating ? "Generating..." : "Generate Roadmap"}
-          </button>
-          <div className="flex items-center gap-2">
-            {["json", "csv", "md"].map((format) => (
-              <button
-                key={format}
-                onClick={() => onExport(format)}
-                className="text-xs px-3 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                Export {format.toUpperCase()}
-              </button>
-            ))}
+          <div className="text-center">
+            <div className="text-xs text-gray-500">High Prio</div>
+            <div className="font-bold text-orange-600">{stats.high}</div>
+          </div>
+          <div className="text-center">
+            <div className="text-xs text-gray-500">Features</div>
+            <div className="font-bold text-gray-900">{stats.total}</div>
           </div>
         </div>
       </div>
 
+      <div className="flex items-center justify-between border-b border-gray-200 pb-1">
+        <div className="flex gap-4">
+          {["phases", "all", "kanban", "priority"].map((tab) => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              className={`pb-2 text-sm font-medium capitalize transition-colors ${
+                activeTab === tab
+                  ? "text-blue-600 border-b-2 border-blue-600"
+                  : "text-gray-500 hover:text-gray-700"
+              }`}
+            >
+              {tab}
+            </button>
+          ))}
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setGenOpen(true)}
+            disabled={generating}
+            className="text-xs px-3 py-2 border border-gray-200 rounded-lg hover:bg-gray-50"
+          >
+            ✨ AI Plan
+          </button>
+          <button
+            onClick={() => onExport("md")}
+            className="text-xs px-3 py-2 border border-gray-200 rounded-lg hover:bg-gray-50"
+          >
+            Export
+          </button>
+        </div>
+      </div>
+
       <div className="bg-white rounded-xl border border-gray-200 shadow-lg p-6">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          <label htmlFor="feature-name" className="sr-only">
-            Feature name
-          </label>
+        <div className="grid grid-cols-1 md:grid-cols-[2fr,1fr,1fr,auto] gap-3">
           <input
-            id="feature-name"
             value={title}
             onChange={(event) => setTitle(event.target.value)}
-            placeholder="Feature name"
+            placeholder="New feature title..."
             className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
-          <label htmlFor="feature-phase" className="sr-only">
-            Phase
-          </label>
           <select
-            id="feature-phase"
             value={phase}
             onChange={(event) => setPhase(event.target.value)}
             className="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -1202,111 +1358,143 @@ function Roadmap({ roadmap, onCreate, onToggle, onExport, onGenerate, onViewLogs
               </option>
             ))}
           </select>
+          <select
+            value={priority}
+            onChange={(event) => setPriority(event.target.value)}
+            className="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            {["Low", "Medium", "High", "Critical"].map((p) => (
+              <option key={p} value={p}>
+                {p}
+              </option>
+            ))}
+          </select>
           <button
             onClick={handleAdd}
-            className="gradient-bg text-white rounded-lg px-3 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="gradient-bg text-white rounded-lg px-4 py-2 text-sm font-medium hover:opacity-90"
           >
-            Add Feature
+            Add
           </button>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {roadmap.phases.map((item) => (
-          <div key={item} className="bg-gray-50 border border-gray-200 rounded-xl p-4">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="font-semibold text-gray-900">{item}</h3>
-              <span className="text-xs text-gray-600 bg-gray-200 px-2 py-0.5 rounded-full font-medium">
-                {roadmap.features.filter((feature) => feature.phase === item).length}
-              </span>
+      {activeTab === "phases" && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {roadmap.phases.map((item) => (
+            <div key={item} className="bg-gray-50 border border-gray-200 rounded-xl p-4 flex flex-col gap-3">
+              <div className="flex items-center justify-between">
+                <h3 className="font-semibold text-gray-900">{item}</h3>
+                <span className="text-xs bg-gray-200 px-2 py-0.5 rounded-full">
+                  {filteredFeatures.filter((f) => f.phase === item).length}
+                </span>
+              </div>
+              <div className="space-y-3">
+                {filteredFeatures
+                  .filter((feature) => feature.phase === item)
+                  .map((feature) => (
+                    <RoadmapCard
+                      key={feature.id}
+                      feature={feature}
+                      onClick={() => setDetailFeature(feature)}
+                      onUpdate={onUpdate}
+                    />
+                  ))}
+              </div>
             </div>
-            <div className="space-y-3" role="list" aria-label={`${item} features`}>
-              {roadmap.features
-                .filter((feature) => feature.phase === item)
-                .map((feature) => (
-                  <div key={feature.id} role="listitem" className="bg-white rounded-lg border border-gray-200 p-3 shadow-sm">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <div className="text-sm font-medium text-gray-900">{feature.title}</div>
-                        {feature.owner && <div className="text-xs text-gray-500">Owner: {feature.owner}</div>}
-                      </div>
-                      <span
-                        className={`text-xs px-2 py-1 rounded-full font-medium ${
-                          feature.status === "done"
-                            ? "bg-green-100 text-green-700"
-                            : feature.status === "in_progress"
-                              ? "bg-yellow-100 text-yellow-700"
-                              : "bg-gray-100 text-gray-700"
-                        }`}
-                      >
-                        {feature.status.replace("_", " ")}
-                      </span>
-                    </div>
-                    <button
-                      onClick={() => onToggle(feature.id, feature.status === "done" ? "planned" : "done")}
-                      className="mt-3 text-xs px-2 py-1 rounded border border-gray-200 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    >
-                      {feature.status === "done" ? "Reopen" : "Mark Done"}
-                    </button>
-                  </div>
-                ))}
+          ))}
+        </div>
+      )}
+
+      {activeTab === "kanban" && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {["planned", "in_progress", "done"].map((status) => (
+            <div key={status} className="bg-gray-50 border border-gray-200 rounded-xl p-4 flex flex-col gap-3">
+              <div className="flex items-center justify-between">
+                <h3 className="font-semibold text-gray-900 capitalize">{status.replace("_", " ")}</h3>
+                <span className="text-xs bg-gray-200 px-2 py-0.5 rounded-full">
+                  {filteredFeatures.filter((f) => f.status === status).length}
+                </span>
+              </div>
+              <div className="space-y-3">
+                {filteredFeatures
+                  .filter((feature) => feature.status === status)
+                  .map((feature) => (
+                    <RoadmapCard
+                      key={feature.id}
+                      feature={feature}
+                      onClick={() => setDetailFeature(feature)}
+                      onUpdate={onUpdate}
+                    />
+                  ))}
+              </div>
             </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
+
+      {(activeTab === "all" || activeTab === "priority") && (
+        <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+          {filteredFeatures.map((feature, i) => (
+            <div
+              key={feature.id}
+              onClick={() => setDetailFeature(feature)}
+              className={`p-4 flex items-center justify-between hover:bg-gray-50 cursor-pointer ${
+                i !== filteredFeatures.length - 1 ? "border-b border-gray-200" : ""
+              }`}
+            >
+              <div>
+                <div className="font-medium text-gray-900">{feature.title}</div>
+                <div className="text-xs text-gray-500 mt-1 flex gap-2">
+                  <span>{feature.phase}</span>
+                  <span>·</span>
+                  <span
+                    className={`${
+                      feature.priority === "High" || feature.priority === "Critical"
+                        ? "text-orange-600 font-medium"
+                        : ""
+                    }`}
+                  >
+                    {feature.priority || "Medium"}
+                  </span>
+                </div>
+              </div>
+              <StatusBadge status={feature.status} />
+            </div>
+          ))}
+          {filteredFeatures.length === 0 && <div className="p-6 text-center text-gray-500">No features found.</div>}
+        </div>
+      )}
 
       {genOpen && (
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-lg font-semibold text-gray-900">Generate Roadmap</h3>
-              <button
-                onClick={() => setGenOpen(false)}
-                className="text-gray-400 hover:text-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded p-1"
-                aria-label="Close dialog"
-              >
-                ✕
-              </button>
-            </div>
+            <h3 className="text-lg font-semibold text-gray-900">Generate Roadmap</h3>
+            <p className="text-xs text-gray-500">
+              Generate an AI-powered roadmap with phases, milestones, and optional competitor insights.
+            </p>
             <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
               <input
                 type="checkbox"
                 checked={withCompetitors}
-                onChange={(event) => setWithCompetitors(event.target.checked)}
-                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                onChange={(e) => setWithCompetitors(e.target.checked)}
+                className="rounded text-blue-600 focus:ring-blue-500"
               />
               Include competitor analysis
             </label>
-            <p className="text-xs text-gray-500">
-              Generate an AI-powered roadmap with phases, milestones, and optional competitor insights.
-            </p>
-            <div className="flex items-center justify-end gap-2">
+            <div className="flex justify-end gap-2 pt-2">
               <button
                 onClick={() => setGenOpen(false)}
-                className="text-sm px-3 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="px-3 py-2 border border-gray-200 rounded-lg text-sm"
               >
                 Cancel
               </button>
-              {generating && (
-                <button
-                  onClick={() => {
-                    setGenOpen(false)
-                    onViewLogs()
-                  }}
-                  className="text-sm px-3 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  View Logs
-                </button>
-              )}
               <button
                 onClick={async () => {
                   await onGenerate(withCompetitors)
                   setGenOpen(false)
                 }}
                 disabled={generating}
-                className={`gradient-bg text-white px-4 py-2 rounded-lg font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                  generating ? "opacity-60 cursor-not-allowed" : "hover:opacity-90"
-                }`}
+                className="gradient-bg text-white px-4 py-2 rounded-lg text-sm font-medium"
               >
                 {generating ? "Generating..." : "Generate"}
               </button>
@@ -1314,9 +1502,62 @@ function Roadmap({ roadmap, onCreate, onToggle, onExport, onGenerate, onViewLogs
           </div>
         </div>
       )}
+
+      {detailFeature && (
+        <RoadmapDetailDialog
+          feature={detailFeature}
+          onClose={() => setDetailFeature(null)}
+          onUpdate={onUpdate}
+          onConvert={onConvert}
+        />
+      )}
     </div>
   )
 }
+
+function RoadmapCard({ feature, onClick, onUpdate }) {
+  return (
+    <div onClick={onClick} className="bg-white rounded-lg border border-gray-200 p-3 shadow-sm hover:shadow-md transition-shadow cursor-pointer group">
+      <div className="flex justify-between items-start mb-2">
+        <div className="text-sm font-medium text-gray-900 leading-tight">{feature.title}</div>
+        {feature.priority && (
+            <span className={`text-[10px] uppercase font-bold px-1.5 py-0.5 rounded ${
+                feature.priority === 'Critical' ? 'bg-red-100 text-red-700' :
+                feature.priority === 'High' ? 'bg-orange-100 text-orange-700' :
+                'bg-gray-100 text-gray-600'
+            }`}>{feature.priority}</span>
+        )}
+      </div>
+      <div className="flex items-center justify-between mt-2">
+         <StatusBadge status={feature.status} />
+         <div className="opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
+             {feature.status !== 'done' && (
+                 <button 
+                    onClick={(e) => { e.stopPropagation(); onUpdate(feature.id, { status: 'done' }) }}
+                    className="text-xs p-1 text-green-600 hover:bg-green-50 rounded" title="Mark Done">
+                    ✓
+                 </button>
+             )}
+         </div>
+      </div>
+    </div>
+  )
+}
+
+function StatusBadge({ status }) {
+  const styles = {
+    done: "bg-green-100 text-green-700",
+    in_progress: "bg-blue-100 text-blue-700",
+    planned: "bg-gray-100 text-gray-700",
+    backlog: "bg-gray-100 text-gray-500"
+  }
+  return (
+    <span className={`text-xs px-2 py-0.5 rounded-full capitalize ${styles[status] || styles.planned}`}>
+      {status?.replace("_", " ")}
+    </span>
+  )
+}
+
 
 function Ideation({ ideas, onCreate, onStatus, onConvert, onGenerate, onViewLogs, generating }) {
   const types = [
@@ -1360,15 +1601,21 @@ function Ideation({ ideas, onCreate, onStatus, onConvert, onGenerate, onViewLogs
   const [selectedTypes, setSelectedTypes] = useState(typeIDs)
   const [genOpen, setGenOpen] = useState(false)
   const [maxIdeas, setMaxIdeas] = useState(12)
+  const [search, setSearch] = useState("")
 
   const visible = useMemo(() => {
-    const filtered = activeType === "all" ? ideas : ideas.filter((idea) => idea.type === activeType)
-    return filtered.filter((idea) => (showArchived ? true : idea.status !== "archived"))
-  }, [activeType, ideas, showArchived])
+    let filtered = activeType === "all" ? ideas : ideas.filter((idea) => idea.type === activeType)
+    filtered = filtered.filter((idea) => (showArchived ? true : idea.status !== "archived"))
+    if (search.trim()) {
+      const q = search.toLowerCase()
+      filtered = filtered.filter((idea) => idea.title.toLowerCase().includes(q))
+    }
+    return filtered
+  }, [activeType, ideas, showArchived, search])
 
   const handleAdd = async () => {
     if (!title.trim()) return
-    await onCreate({ title: title.trim(), type })
+    await onCreate({ title: title.trim(), type, status: "active", impact: "medium" })
     setTitle("")
     setType(types[0].id)
   }
@@ -1389,6 +1636,12 @@ function Ideation({ ideas, onCreate, onStatus, onConvert, onGenerate, onViewLogs
           <p className="text-gray-600">Capture ideas, convert to tasks, and manage signals.</p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search ideas..."
+            className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 w-48"
+          />
           <button
             onClick={() => setGenOpen(true)}
             disabled={generating}
@@ -1400,7 +1653,9 @@ function Ideation({ ideas, onCreate, onStatus, onConvert, onGenerate, onViewLogs
           </button>
           <button
             onClick={() => setShowArchived(!showArchived)}
-            className="text-sm px-3 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className={`text-sm px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+              showArchived ? "bg-gray-100" : "hover:bg-gray-50"
+            }`}
             aria-pressed={showArchived}
           >
             {showArchived ? "Hide Archived" : "Show Archived"}
@@ -1409,22 +1664,14 @@ function Ideation({ ideas, onCreate, onStatus, onConvert, onGenerate, onViewLogs
       </div>
 
       <div className="bg-white rounded-xl border border-gray-200 shadow-lg p-6">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          <label htmlFor="idea-title" className="sr-only">
-            Idea title
-          </label>
+        <div className="grid grid-cols-1 md:grid-cols-[2fr,1fr,auto] gap-3">
           <input
-            id="idea-title"
             value={title}
             onChange={(event) => setTitle(event.target.value)}
-            placeholder="Idea title"
+            placeholder="Capture a new idea..."
             className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
-          <label htmlFor="idea-type" className="sr-only">
-            Type
-          </label>
           <select
-            id="idea-type"
             value={type}
             onChange={(event) => setType(event.target.value)}
             className="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -1437,7 +1684,7 @@ function Ideation({ ideas, onCreate, onStatus, onConvert, onGenerate, onViewLogs
           </select>
           <button
             onClick={handleAdd}
-            className="gradient-bg text-white rounded-lg px-3 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="gradient-bg text-white rounded-lg px-4 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
             Add Idea
           </button>
@@ -1475,61 +1722,54 @@ function Ideation({ ideas, onCreate, onStatus, onConvert, onGenerate, onViewLogs
           <div
             key={idea.id}
             role="listitem"
-            className="bg-white rounded-xl border border-gray-200 shadow-lg p-4 hover:shadow-xl transition-shadow"
+            className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 hover:shadow-md transition-shadow flex flex-col justify-between"
           >
-            <div className="flex items-start justify-between">
-              <div>
-                <div className="text-sm font-semibold text-gray-900">{idea.title}</div>
-                <div className="text-xs text-gray-500 mt-1">
-                  Type: {idea.type} · Impact: {idea.impact}
+            <div>
+              <div className="flex items-start justify-between">
+                <div>
+                  <div className="text-sm font-semibold text-gray-900">{idea.title}</div>
+                  <div className="text-xs text-gray-500 mt-1 flex gap-2">
+                    <span className="capitalize">{idea.type?.replace("_", " ")}</span>
+                    <span>·</span>
+                    <span className="capitalize">{idea.impact} Impact</span>
+                  </div>
+                  {idea.taskID && <div className="text-xs text-blue-600 mt-1 font-medium">Linked Task: {idea.taskID}</div>}
                 </div>
-                {idea.taskID && <div className="text-xs text-blue-600 mt-1 font-medium">Task: {idea.taskID}</div>}
+                <IdeaStatusBadge status={idea.status} />
               </div>
-              <span
-                className={`text-xs px-2 py-1 rounded-full font-medium ${
-                  idea.status === "archived"
-                    ? "bg-gray-200 text-gray-600"
-                    : idea.status === "dismissed"
-                      ? "bg-yellow-100 text-yellow-700"
-                      : idea.status === "converted"
-                        ? "bg-blue-100 text-blue-700"
-                        : "bg-green-100 text-green-700"
-                }`}
-              >
-                {idea.status}
-              </span>
+              <div className="mt-2 text-xs text-gray-500 italic">
+                {types.find((item) => item.id === idea.type)?.hint}
+              </div>
             </div>
-            <div className="flex flex-wrap items-center gap-2 mt-4">
+            
+            <div className="flex flex-wrap items-center gap-2 mt-4 pt-2 border-t border-gray-100">
+              {idea.status !== 'converted' && idea.status !== 'archived' && (
+                 <button
+                    onClick={() => onConvert(idea.id)}
+                    className="text-xs px-2 py-1 rounded border border-blue-200 text-blue-700 hover:bg-blue-50 font-medium"
+                 >
+                    ⚡ Convert
+                 </button>
+              )}
+              {idea.status === 'dismissed' ? (
+                <button onClick={() => onStatus(idea.id, "active")} className="text-xs px-2 py-1 rounded border border-gray-200 hover:bg-gray-100">
+                  Restore
+                </button>
+              ) : (
+                <button onClick={() => onStatus(idea.id, "dismissed")} className="text-xs px-2 py-1 rounded border border-gray-200 hover:bg-gray-100">
+                  Dismiss
+                </button>
+              )}
               <button
-                onClick={() => onStatus(idea.id, "active")}
-                className="text-xs px-2 py-1 rounded border border-gray-200 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                onClick={() => onStatus(idea.id, idea.status === 'archived' ? 'active' : 'archived')}
+                className="text-xs px-2 py-1 rounded border border-gray-200 hover:bg-gray-100"
               >
-                Keep
+                {idea.status === 'archived' ? 'Unarchive' : 'Archive'}
               </button>
-              <button
-                onClick={() => onStatus(idea.id, "dismissed")}
-                className="text-xs px-2 py-1 rounded border border-gray-200 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                Dismiss
-              </button>
-              <button
-                onClick={() => onStatus(idea.id, "archived")}
-                className="text-xs px-2 py-1 rounded border border-gray-200 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                Archive
-              </button>
-              <button
-                onClick={() => onConvert(idea.id)}
-                className="text-xs px-2 py-1 rounded border border-blue-200 text-blue-700 hover:bg-blue-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                Convert to Task
-              </button>
-            </div>
-            <div className="mt-3 text-xs text-gray-500 italic">
-              {types.find((item) => item.id === idea.type)?.hint}
             </div>
           </div>
         ))}
+        {visible.length === 0 && <div className="col-span-full text-center py-8 text-gray-500">No ideas found matching filters.</div>}
       </div>
 
       {genOpen && (
@@ -1548,7 +1788,7 @@ function Ideation({ ideas, onCreate, onStatus, onConvert, onGenerate, onViewLogs
             <div className="text-sm text-gray-600">Select idea types to generate.</div>
             <div className="flex flex-wrap gap-2 text-xs text-gray-600">
               {types.map((item) => (
-                <label key={item.id} className="flex items-center gap-2 bg-gray-50 px-3 py-2 rounded-lg cursor-pointer">
+                <label key={item.id} className="flex items-center gap-2 bg-gray-50 px-3 py-2 rounded-lg cursor-pointer hover:bg-gray-100">
                   <input
                     type="checkbox"
                     checked={selectedTypes.includes(item.id)}
@@ -1559,21 +1799,21 @@ function Ideation({ ideas, onCreate, onStatus, onConvert, onGenerate, onViewLogs
                 </label>
               ))}
             </div>
-            <label htmlFor="max-ideas" className="sr-only">
-              Max ideas
-            </label>
-            <input
-              id="max-ideas"
-              value={maxIdeas}
-              onChange={(event) => setMaxIdeas(event.target.value)}
-              placeholder="Max ideas"
-              className="border border-gray-300 rounded-lg px-3 py-2 text-sm w-24 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              type="number"
-            />
-            <div className="flex items-center justify-end gap-2">
+            <div>
+                 <label className="text-xs text-gray-500 block mb-1">Max ideas to generate</label>
+                 <input
+                    type="number"
+                    value={maxIdeas}
+                    onChange={(e) => setMaxIdeas(e.target.value)}
+                    className="border border-gray-300 rounded px-2 py-1 text-sm w-20"
+                    min="1"
+                    max="20"
+                 />
+            </div>
+            <div className="flex items-center justify-end gap-2 pt-2">
               <button
                 onClick={() => setGenOpen(false)}
-                className="text-sm px-3 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="text-sm px-3 py-2 border border-gray-200 rounded-lg hover:bg-gray-50"
               >
                 Cancel
               </button>
@@ -1583,7 +1823,7 @@ function Ideation({ ideas, onCreate, onStatus, onConvert, onGenerate, onViewLogs
                     setGenOpen(false)
                     onViewLogs()
                   }}
-                  className="text-sm px-3 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="text-sm px-3 py-2 border border-gray-200 rounded-lg hover:bg-gray-50"
                 >
                   View Logs
                 </button>
@@ -1608,11 +1848,26 @@ function Ideation({ ideas, onCreate, onStatus, onConvert, onGenerate, onViewLogs
   )
 }
 
+function IdeaStatusBadge({ status }) {
+    const styles = {
+        active: "bg-green-100 text-green-700",
+        dismissed: "bg-gray-100 text-gray-500",
+        converted: "bg-blue-100 text-blue-700",
+        archived: "bg-gray-200 text-gray-600"
+    }
+    return (
+        <span className={`text-xs px-2 py-0.5 rounded-full font-medium capitalize ${styles[status] || styles.active}`}>
+            {status}
+        </span>
+    )
+}
+
 function Context({ memories, indexItems, onAddMemory, onSearchIndex, onSearchMemories }) {
   const [activeTab, setActiveTab] = useState("index")
   const [search, setSearch] = useState("")
   const [memorySearch, setMemorySearch] = useState("")
   const [memoryInput, setMemoryInput] = useState("")
+  const [memoryTag, setMemoryTag] = useState("general")
 
   useEffect(() => {
     onSearchIndex(search)
@@ -1624,138 +1879,191 @@ function Context({ memories, indexItems, onAddMemory, onSearchIndex, onSearchMem
 
   const handleAdd = async () => {
     if (!memoryInput.trim()) return
-    await onAddMemory({ title: memoryInput.trim() })
+    await onAddMemory({ title: memoryInput.trim(), tag: memoryTag })
     setMemoryInput("")
+    setMemoryTag("general")
+  }
+
+  // Helper to highlight matching text
+  const highlight = (text, query) => {
+    if (!query) return text
+    const parts = text.split(new RegExp(`(${query})`, "gi"))
+    return (
+      <span>
+        {parts.map((part, i) =>
+          part.toLowerCase() === query.toLowerCase() ? (
+            <span key={i} className="bg-yellow-100 text-gray-900 font-medium">
+              {part}
+            </span>
+          ) : (
+            part
+          ),
+        )}
+      </span>
+    )
   }
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold text-gray-900">📁 Context Manager</h2>
-        <p className="text-gray-600">Browse indexed knowledge and team memory.</p>
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <h2 className="text-2xl font-bold text-gray-900">📁 Context Manager</h2>
+          <p className="text-gray-600">Browse indexed knowledge and team memory.</p>
+        </div>
+        <div className="flex items-center gap-4">
+          <div className="text-center">
+            <div className="text-xs text-gray-500">Indexed Items</div>
+            <div className="font-bold text-gray-900">{indexItems.length}</div>
+          </div>
+          <div className="text-center">
+            <div className="text-xs text-gray-500">Memories</div>
+            <div className="font-bold text-blue-600">{memories.length}</div>
+          </div>
+        </div>
       </div>
 
-      <div role="tablist" className="flex gap-3">
-        <button
-          role="tab"
-          aria-selected={activeTab === "index"}
-          aria-controls="panel-index"
-          onClick={() => setActiveTab("index")}
-          className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-            activeTab === "index" ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-          }`}
-        >
-          Project Index
-        </button>
-        <button
-          role="tab"
-          aria-selected={activeTab === "memories"}
-          aria-controls="panel-memories"
-          onClick={() => setActiveTab("memories")}
-          className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-            activeTab === "memories" ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-          }`}
-        >
-          Memories
-        </button>
+      <div className="flex items-center justify-between border-b border-gray-200 pb-1">
+        <div className="flex gap-4">
+          <button
+            onClick={() => setActiveTab("index")}
+            className={`pb-2 text-sm font-medium capitalize transition-colors ${
+              activeTab === "index"
+                ? "text-blue-600 border-b-2 border-blue-600"
+                : "text-gray-500 hover:text-gray-700"
+            }`}
+          >
+            Project Index
+          </button>
+          <button
+            onClick={() => setActiveTab("memories")}
+            className={`pb-2 text-sm font-medium capitalize transition-colors ${
+              activeTab === "memories"
+                ? "text-blue-600 border-b-2 border-blue-600"
+                : "text-gray-500 hover:text-gray-700"
+            }`}
+          >
+            Memories
+          </button>
+        </div>
       </div>
 
       {activeTab === "index" && (
-        <div
-          id="panel-index"
-          role="tabpanel"
-          className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 space-y-4"
-        >
-          <div className="flex items-center gap-3">
-            <label htmlFor="index-search" className="sr-only">
-              Search index
-            </label>
-            <input
-              id="index-search"
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="Search index..."
-              className="border border-gray-300 rounded-lg px-3 py-2 text-sm flex-1 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            />
-            <button
-              onClick={() => onSearchIndex(search)}
-              aria-label="Refresh index search"
-              className="border border-gray-200 rounded-lg px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              Refresh
-            </button>
+        <div className="space-y-4">
+          <div className="bg-white rounded-xl border border-gray-200 shadow-lg p-6">
+            <div className="flex items-center gap-3">
+              <div className="relative flex-1">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">🔍</span>
+                <input
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  placeholder="Search project index..."
+                  className="w-full border border-gray-300 rounded-lg pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <button
+                onClick={() => onSearchIndex(search)}
+                className="px-3 py-2 border border-gray-200 rounded-lg text-sm hover:bg-gray-50"
+              >
+                Refresh
+              </button>
+            </div>
           </div>
-          <div className="space-y-3" role="list">
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {indexItems.map((item) => (
               <div
                 key={item}
-                role="listitem"
-                className="flex items-center justify-between border border-gray-200 rounded-lg p-3 hover:bg-gray-50 transition-colors"
+                className="bg-white rounded-lg border border-gray-200 p-4 hover:shadow-md transition-shadow group"
               >
-                <div>
-                  <div className="text-sm font-semibold text-gray-900">{item}</div>
-                  <div className="text-xs text-gray-500">Indexed file</div>
+                <div className="flex items-start justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xl">📄</span>
+                    <div>
+                      <div className="font-medium text-gray-900 break-all">{highlight(item, search)}</div>
+                      <div className="text-xs text-gray-500">Indexed file</div>
+                    </div>
+                  </div>
+                  <span className="text-xs bg-green-50 text-green-700 px-2 py-1 rounded-full font-medium opacity-0 group-hover:opacity-100 transition-opacity">
+                    Ready
+                  </span>
                 </div>
-                <div className="text-xs text-green-600 font-medium bg-green-50 px-2 py-1 rounded">Ready</div>
               </div>
             ))}
-            {indexItems.length === 0 && <div className="text-sm text-gray-500 italic">No index results yet.</div>}
+            {indexItems.length === 0 && (
+              <div className="col-span-full py-12 text-center text-gray-500 bg-gray-50 rounded-xl border border-dashed border-gray-300">
+                No indexed items found matching your search.
+              </div>
+            )}
           </div>
         </div>
       )}
 
       {activeTab === "memories" && (
-        <div
-          id="panel-memories"
-          role="tabpanel"
-          className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 space-y-4"
-        >
-          <div className="grid grid-cols-1 md:grid-cols-[1fr,auto] gap-3">
-            <label htmlFor="memory-input" className="sr-only">
-              Add memory note
-            </label>
-            <input
-              id="memory-input"
-              value={memoryInput}
-              onChange={(event) => setMemoryInput(event.target.value)}
-              placeholder="Add memory note..."
-              className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              onKeyDown={(e) => e.key === "Enter" && handleAdd()}
-            />
-            <button
-              onClick={handleAdd}
-              className="gradient-bg text-white rounded-lg px-4 py-2 text-sm font-medium shadow-sm hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1"
-            >
-              Add Memory
-            </button>
+        <div className="space-y-4">
+          <div className="bg-white rounded-xl border border-gray-200 shadow-lg p-6 space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-[2fr,1fr,auto] gap-3">
+              <input
+                value={memoryInput}
+                onChange={(event) => setMemoryInput(event.target.value)}
+                placeholder="Add a new memory note..."
+                className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                onKeyDown={(e) => e.key === "Enter" && handleAdd()}
+              />
+              <select
+                value={memoryTag}
+                onChange={(e) => setMemoryTag(e.target.value)}
+                className="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="general">General</option>
+                <option value="architecture">Architecture</option>
+                <option value="decision">Decision</option>
+                <option value="convention">Convention</option>
+                <option value="issue">Known Issue</option>
+              </select>
+              <button
+                onClick={handleAdd}
+                className="gradient-bg text-white rounded-lg px-4 py-2 text-sm font-medium hover:opacity-90"
+              >
+                Add Memory
+              </button>
+            </div>
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">🔍</span>
+              <input
+                value={memorySearch}
+                onChange={(event) => setMemorySearch(event.target.value)}
+                placeholder="Search memories..."
+                className="w-full border border-gray-300 rounded-lg pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
           </div>
-          <label htmlFor="memory-search" className="sr-only">
-            Search memories
-          </label>
-          <input
-            id="memory-search"
-            value={memorySearch}
-            onChange={(event) => setMemorySearch(event.target.value)}
-            placeholder="Search memories..."
-            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-          />
-          <div className="space-y-3" role="list">
+
+          <div className="space-y-3">
             {memories.map((item) => (
               <div
                 key={item.id}
-                role="listitem"
-                className="flex items-center justify-between border border-gray-200 rounded-lg p-3 hover:bg-gray-50 transition-colors"
+                className="bg-white rounded-xl border border-gray-200 p-4 hover:shadow-md transition-shadow"
               >
-                <div>
-                  <div className="text-sm font-semibold text-gray-900">{item.title}</div>
-                  <div className="text-xs text-gray-500">Tag: {item.tag}</div>
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <div className="font-medium text-gray-900">{highlight(item.title, memorySearch)}</div>
+                    <div className="flex items-center gap-2 mt-2">
+                      <span className="text-xs px-2 py-0.5 bg-blue-50 text-blue-700 rounded-full font-medium capitalize">
+                        {item.tag || "general"}
+                      </span>
+                      <span className="text-xs text-gray-400">
+                        {new Date(item.createdAt).toLocaleDateString()} at {new Date(item.createdAt).toLocaleTimeString()}
+                      </span>
+                    </div>
+                  </div>
                 </div>
-                <span className="text-xs text-gray-400" aria-label={`Created at ${new Date(item.createdAt).toLocaleString()}`}>
-                  {new Date(item.createdAt).toLocaleString()}
-                </span>
               </div>
             ))}
-            {memories.length === 0 && <div className="text-sm text-gray-500 italic">No memories yet.</div>}
+            {memories.length === 0 && (
+              <div className="py-12 text-center text-gray-500 bg-gray-50 rounded-xl border border-dashed border-gray-300">
+                No memories found. Start adding context to help the AI understand your project better.
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -1867,43 +2175,49 @@ function Insights({
             <h3 className="text-sm font-semibold text-gray-900">Sessions</h3>
             <button
               onClick={onCreateSession}
-              className="text-xs text-blue-600 hover:underline focus:outline-none focus:ring-2 focus:ring-blue-500 rounded px-1"
+              className="text-xs flex items-center gap-1 text-blue-600 hover:text-blue-700 font-medium px-2 py-1 rounded-md hover:bg-blue-50 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500"
               aria-label="Create new session"
             >
-              New
+              <span className="text-lg leading-none">+</span> New
             </button>
           </div>
           <div className="space-y-2" role="list" aria-label="Chat sessions">
-            {sessions.map((session) => (
-              <div
-                key={session.id}
-                role="listitem"
-                className={`flex items-center gap-2 w-full p-2 rounded-lg border text-sm transition-colors ${
-                  activeSession === session.id ? "border-blue-500 bg-blue-50" : "border-gray-200 hover:bg-gray-50"
-                }`}
-              >
-                <button
-                  onClick={() => onSelectSession(session.id)}
-                  className="flex-1 text-left focus:outline-none focus:underline"
-                  aria-current={activeSession === session.id ? "true" : "false"}
+            {sessions.map((session) => {
+              const status = statusMap?.[session.id]?.type ?? "idle"
+              const statusColor = status === "running" ? "bg-green-100 text-green-700" : status === "error" ? "bg-red-100 text-red-700" : "bg-gray-100 text-gray-600"
+              return (
+                <div
+                  key={session.id}
+                  role="listitem"
+                  className={`flex items-center gap-2 w-full p-2 rounded-lg text-sm transition-colors ${
+                    activeSession === session.id ? "bg-blue-50 text-blue-700 font-medium" : "hover:bg-gray-50 text-gray-700"
+                  }`}
                 >
-                  <div className="font-medium text-gray-900 truncate">{session.title}</div>
-                  <div className="text-xs text-gray-500">{statusMap?.[session.id]?.type ?? "idle"}</div>
-                </button>
-                <button
-                  onClick={(event) => {
-                    event.stopPropagation()
-                    setRenameID(session.id)
-                    setRenameTitle(session.title)
-                    setRenameOpen(true)
-                  }}
-                  className="text-xs text-gray-400 hover:text-blue-600 focus:outline-none focus:text-blue-600 p-1"
-                  aria-label={`Rename session ${session.title}`}
-                >
-                  Rename
-                </button>
-              </div>
-            ))}
+                  <button
+                    onClick={() => onSelectSession(session.id)}
+                    className="flex-1 text-left focus:outline-none focus:underline"
+                    aria-current={activeSession === session.id ? "true" : "false"}
+                  >
+                    <div className="font-medium text-gray-900 truncate">{session.title}</div>
+                    <div className="flex items-center gap-2 text-xs text-gray-500">
+                      <span className={`px-2 py-0.5 rounded-full ${statusColor}`}>{status}</span>
+                    </div>
+                  </button>
+                  <button
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      setRenameID(session.id)
+                      setRenameTitle(session.title)
+                      setRenameOpen(true)
+                    }}
+                    className="text-xs text-gray-400 hover:text-blue-600 focus:outline-none focus:text-blue-600 p-1"
+                    aria-label={`Rename session ${session.title}`}
+                  >
+                    Rename
+                  </button>
+                </div>
+              )
+            })}
             {sessions.length === 0 && <div className="text-xs text-gray-500 italic">No sessions yet.</div>}
           </div>
         </div>
@@ -1927,6 +2241,11 @@ function Insights({
               <div className="text-gray-400">Session: {activeSession ?? "None"}</div>
             </div>
           </div>
+          {sendError && (
+            <div className="mb-2 text-xs text-red-600 bg-red-50 border border-red-100 rounded p-2" role="alert">
+              {sendError}
+            </div>
+          )}
 
           <div
             className="flex-1 overflow-y-auto space-y-3 min-h-0 p-2 scroll-smooth"
@@ -2202,6 +2521,7 @@ function ProjectHub({
   files,
   filePath,
   pathInfo,
+  directory,
   onRefreshProjects,
   onUpdateProject,
   onAddProject,
@@ -2209,6 +2529,7 @@ function ProjectHub({
   onCreateWorktree,
   onBrowse,
   onSetPath,
+  onSelectProject,
 }) {
   const tabs = ["projects", "worktrees", "files"]
   const [tab, setTab] = useState("projects")
@@ -2239,12 +2560,13 @@ function ProjectHub({
     const load = async () => {
       const url = new URL("/file/content", window.location.origin)
       url.searchParams.set("path", focus.path)
+      if (directory) url.searchParams.set("directory", directory)
       const response = await fetch(url.toString())
       const data = await response.json()
       setPreview(data.content?.slice(0, 4000) ?? "")
     }
     load()
-  }, [focus])
+  }, [directory, focus])
 
   useEffect(() => {
     if (!browseOpen) return
@@ -2253,13 +2575,15 @@ function ProjectHub({
       return
     }
     const timer = setTimeout(() => {
-      const url = new URL("/path", window.location.origin)
-      url.searchParams.set("query", browseQuery)
-      url.searchParams.set("dirs", "true")
-      url.searchParams.set("type", "directory")
-      url.searchParams.set("limit", "25")
-      setBrowseLoading(true)
-      fetch(url.toString())
+       const url = new URL("/find/file", window.location.origin)
+       url.searchParams.set("query", browseQuery)
+       url.searchParams.set("dirs", "true")
+       url.searchParams.set("type", "directory")
+       url.searchParams.set("limit", "25")
+       if (directory) url.searchParams.set("directory", directory)
+       setBrowseLoading(true)
+       fetch(url.toString())
+
         .then((response) => response.json())
         .then((data) => {
           setBrowseResults(Array.isArray(data) ? data : [])
@@ -2271,7 +2595,7 @@ function ProjectHub({
         })
     }, 300)
     return () => clearTimeout(timer)
-  }, [browseOpen, browseQuery])
+  }, [browseOpen, browseQuery, directory])
 
   const handleAdd = async () => {
     if (!dir.trim()) return
@@ -2301,160 +2625,261 @@ function ProjectHub({
   const parts = filePath.split("/").filter(Boolean)
   const up = parts.length ? `/${parts.slice(0, -1).join("/")}` : root
 
-  return (
-    <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold text-gray-900">🗂️ Projects & Worktrees</h2>
-        <p className="text-gray-600">Manage projects, sandboxes, and file navigation.</p>
+  const ProjectCard = ({ project, active }) => (
+    <div
+      className={`p-4 rounded-xl border transition-all duration-200 ${
+        active ? "bg-blue-50 border-blue-200 shadow-sm ring-1 ring-blue-100" : "bg-white border-gray-200 shadow-sm hover:shadow-md"
+      }`}
+    >
+      <div className="flex justify-between items-start mb-3">
+        <div>
+          <h3 className="font-bold text-gray-900 flex items-center gap-2">
+            {project.name || "Untitled Project"}
+            {active && (
+              <span className="bg-blue-100 text-blue-700 text-[10px] px-2 py-0.5 rounded-full uppercase tracking-wide font-bold">
+                Active
+              </span>
+            )}
+          </h3>
+          <p className="text-xs text-gray-500 font-mono mt-1 break-all">{project.worktree}</p>
+        </div>
+        <div className="text-2xl opacity-20">🗂️</div>
       </div>
-
-      <div role="tablist" className="flex flex-wrap gap-2">
-        {tabs.map((item) => (
-          <button
-            key={item}
-            role="tab"
-            aria-selected={tab === item}
-            aria-controls={`panel-${item}`}
-            onClick={() => setTab(item)}
-            className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-              tab === item ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+      
+      <div className="flex items-center gap-2 pt-2 mt-2 border-t border-gray-100">
+         <button
+            onClick={() => onSelectProject(project)}
+            disabled={active}
+            className={`flex-1 text-xs font-medium py-1.5 rounded-lg transition-colors ${
+               active 
+                ? "bg-blue-100 text-blue-700 cursor-default" 
+                : "bg-gray-100 text-gray-700 hover:bg-gray-200 hover:text-gray-900"
             }`}
           >
-            {item.charAt(0).toUpperCase() + item.slice(1)}
+            {active ? "Currently Open" : "Open Project"}
           </button>
-        ))}
+          <button
+            onClick={() => {
+              setEdit(project)
+              setEditName(project.name ?? "")
+            }}
+            className="px-3 py-1.5 text-xs font-medium text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+          >
+            Rename
+          </button>
+      </div>
+    </div>
+  )
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-2xl font-bold text-gray-900">🗂️ Projects & Worktrees</h2>
+          <p className="text-gray-600">Manage projects, sandboxes, and file navigation.</p>
+          <p className="text-xs text-gray-500 mt-1">Active directory: {directory || "current workspace"}</p>
+        </div>
+        
+        <div className="flex bg-gray-100 p-1 rounded-lg">
+          {tabs.map((item) => (
+            <button
+              key={item}
+              onClick={() => setTab(item)}
+              className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${
+                tab === item ? "bg-white text-blue-600 shadow-sm" : "text-gray-500 hover:text-gray-700"
+              }`}
+            >
+              {item.charAt(0).toUpperCase() + item.slice(1)}
+            </button>
+          ))}
+        </div>
       </div>
 
       {tab === "projects" && (
-        <div id="panel-projects" role="tabpanel" className="space-y-4">
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => setAddOpen(true)}
-              className="gradient-bg text-white px-3 py-2 rounded-lg text-sm font-medium shadow-sm hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1"
-            >
-              Add Project
-            </button>
-            <button
-              onClick={() => setGitOpen(true)}
-              className="text-sm px-3 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              Git Setup
-            </button>
-          </div>
-          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 space-y-3" role="list">
-            {projects.map((project) => (
-              <div key={project.id} role="listitem" className="flex items-center justify-between gap-4 p-2 rounded hover:bg-gray-50 transition-colors">
-                <div>
-                  <div className="text-sm font-semibold text-gray-900 flex items-center">
-                    {project.name ?? project.worktree}
-                    {current?.id === project.id && (
-                      <span className="text-xs text-blue-600 ml-2 bg-blue-50 px-2 py-0.5 rounded font-medium">Active</span>
-                    )}
-                  </div>
-                  <div className="text-xs text-gray-500 font-mono mt-0.5">{project.worktree}</div>
-                </div>
-                <button
-                  onClick={() => {
-                    setEdit(project)
-                    setEditName(project.name ?? "")
-                  }}
-                  className="text-xs px-2 py-1 border border-gray-200 rounded-lg hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  aria-label={`Rename project ${project.name ?? project.worktree}`}
+        <div className="space-y-6">
+           <div className="flex items-center justify-between">
+              <h3 className="text-lg font-bold text-gray-900">Available Projects</h3>
+              <div className="flex gap-2">
+                 <button
+                  onClick={() => setGitOpen(true)}
+                  className="text-sm px-3 py-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
                 >
-                  Rename
+                  Configure Git
+                </button>
+                <button
+                  onClick={() => setAddOpen(true)}
+                  className="gradient-bg text-white px-4 py-2 rounded-lg text-sm font-medium shadow-sm hover:opacity-90 transition-opacity"
+                >
+                  + New Project
                 </button>
               </div>
-            ))}
-            {projects.length === 0 && <div className="text-sm text-gray-500 italic">No projects registered.</div>}
+           </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {projects.map((project) => {
+              const active = current?.id === project.id || project.worktree === directory
+              return <ProjectCard key={project.id} project={project} active={active} />
+            })}
+             {projects.length === 0 && (
+                <div className="col-span-full py-12 text-center bg-gray-50 rounded-xl border border-dashed border-gray-200">
+                  <div className="text-4xl mb-3 opacity-20">📂</div>
+                  <p className="text-gray-500 font-medium">No projects found</p>
+                  <button 
+                    onClick={() => setAddOpen(true)}
+                    className="mt-2 text-blue-600 hover:underline text-sm"
+                  >
+                    Add your first project
+                  </button>
+                </div>
+             )}
           </div>
         </div>
       )}
 
       {tab === "worktrees" && (
-        <div id="panel-worktrees" role="tabpanel" className="space-y-4">
-          <button
-            onClick={() => setWorkOpen(true)}
-            className="gradient-bg text-white px-3 py-2 rounded-lg text-sm font-medium shadow-sm hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1"
-          >
-            New Worktree
-          </button>
-          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 space-y-2" role="list">
+        <div className="space-y-6">
+           <div className="flex items-center justify-between">
+              <h3 className="text-lg font-bold text-gray-900">Active Worktrees</h3>
+              <button
+                onClick={() => setWorkOpen(true)}
+                 className="gradient-bg text-white px-4 py-2 rounded-lg text-sm font-medium shadow-sm hover:opacity-90 transition-opacity"
+              >
+                + Create Worktree
+              </button>
+           </div>
+           
+           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {worktrees.map((tree) => (
-              <div key={tree} role="listitem" className="text-sm text-gray-700 flex items-center gap-2">
-                <span aria-hidden="true" className="text-gray-400">•</span>
-                <span className="font-mono">{tree}</span>
-              </div>
+               <div key={tree} className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                     <div className="bg-purple-100 text-purple-600 p-2 rounded-lg">🌿</div>
+                     <span className="font-mono text-sm text-gray-700">{tree}</span>
+                  </div>
+                   <div className="text-xs text-green-600 bg-green-50 px-2 py-1 rounded font-medium">Ready</div>
+               </div>
             ))}
-            {worktrees.length === 0 && <div className="text-sm text-gray-500 italic">No worktrees yet.</div>}
+            {worktrees.length === 0 && (
+                <div className="col-span-full py-12 text-center bg-gray-50 rounded-xl border border-dashed border-gray-200">
+                   <p className="text-gray-500 italic">No active worktrees.</p>
+                </div>
+            )}
           </div>
+          
+           {workOpen && (
+              <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 max-w-2xl">
+                 <h4 className="font-bold text-gray-900 mb-4">Create New Worktree</h4>
+                 <div className="space-y-4">
+                    <div>
+                       <label className="block text-xs font-medium text-gray-500 mb-1">Branch Name</label>
+                       <input
+                          value={workName}
+                          onChange={(e) => setWorkName(e.target.value)}
+                          placeholder="e.g. feature/new-login"
+                          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                       />
+                    </div>
+                    <div>
+                       <label className="block text-xs font-medium text-gray-500 mb-1">Start Point (Optional)</label>
+                       <input
+                          value={workStart}
+                          onChange={(e) => setWorkStart(e.target.value)}
+                          placeholder="e.g. main or commit hash"
+                          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                       />
+                    </div>
+                    <div className="flex justify-end gap-2 pt-2">
+                       <button
+                          onClick={() => setWorkOpen(false)}
+                          className="px-4 py-2 border border-gray-200 rounded-lg text-sm font-medium hover:bg-gray-50"
+                       >
+                          Cancel
+                       </button>
+                       <button
+                          onClick={handleWorktree}
+                           className="gradient-bg text-white px-4 py-2 rounded-lg text-sm font-medium shadow-sm hover:opacity-90"
+                       >
+                          Create
+                       </button>
+                    </div>
+                 </div>
+              </div>
+           )}
         </div>
       )}
 
       {tab === "files" && (
-        <div id="panel-files" role="tabpanel" className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 space-y-3">
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => onSetPath(up)}
-              className="text-xs px-2 py-1 border border-gray-200 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              aria-label="Go up one directory"
-            >
-              Up
-            </button>
-            <label htmlFor="file-path-input" className="sr-only">File path</label>
-            <input
-              id="file-path-input"
-              value={filePath}
-              onChange={(event) => onSetPath(event.target.value)}
-              className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-            <button
-              onClick={() => onBrowse(filePath)}
-              className="text-xs px-2 py-1 border border-gray-200 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              Refresh
-            </button>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-[1fr,1.2fr] gap-4">
-            <div
-              className="border border-gray-200 rounded-lg p-3 space-y-1 max-h-[420px] overflow-y-auto"
-              role="list"
-              aria-label="File list"
-            >
-              {files.map((item) => (
+        <div className="flex flex-col h-[600px] bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+           {/* File Browser Toolbar */}
+          <div className="flex items-center gap-2 p-3 border-b border-gray-200 bg-gray-50">
+             <div className="flex gap-1">
                 <button
-                  key={item.absolute}
-                  role="listitem"
-                  onClick={() => {
-                    if (item.type === "directory") onSetPath(item.path)
-                    if (item.type === "file") setFocus(item)
-                  }}
-                  className={`w-full text-left text-sm px-2 py-1.5 rounded transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                    focus?.absolute === item.absolute ? "bg-blue-50 text-blue-700 font-medium" : "hover:bg-gray-50"
-                  }`}
+                  onClick={() => onSetPath(up)}
+                  className="p-1.5 text-gray-500 hover:text-gray-700 hover:bg-gray-200 rounded-md transition-colors"
+                  title="Go Up"
                 >
-                  <span className="mr-2" aria-hidden="true">{item.type === "directory" ? "📁" : "📄"}</span>
-                  <span className="font-mono text-xs">{item.name}</span>
+                  ⬆
                 </button>
-              ))}
-              {files.length === 0 && <div className="text-sm text-gray-500 italic p-2">No files found.</div>}
+                <button
+                  onClick={() => onBrowse(filePath)}
+                  className="p-1.5 text-gray-500 hover:text-gray-700 hover:bg-gray-200 rounded-md transition-colors"
+                  title="Refresh"
+                >
+                  🔄
+                </button>
+             </div>
+             
+             <div className="flex-1 relative">
+                <input
+                   value={filePath}
+                   onChange={(e) => onSetPath(e.target.value)}
+                   className="w-full pl-8 pr-4 py-1.5 text-sm font-mono border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <span className="absolute left-2.5 top-1.5 text-gray-400 text-sm">/</span>
+             </div>
+          </div>
+
+          <div className="flex-1 flex overflow-hidden">
+            {/* File List */}
+            <div className="w-1/3 border-r border-gray-200 overflow-y-auto p-2 bg-gray-50/50">
+               {files.map((item) => (
+                 <button
+                   key={item.absolute}
+                   onClick={() => {
+                     if (item.type === "directory") onSetPath(item.path)
+                     if (item.type === "file") setFocus(item)
+                   }}
+                   className={`w-full text-left text-sm px-3 py-2 rounded-md flex items-center gap-2 mb-1 transition-colors ${
+                     focus?.absolute === item.absolute 
+                       ? "bg-blue-100 text-blue-700 font-medium" 
+                       : "hover:bg-gray-100 text-gray-700"
+                   }`}
+                 >
+                   <span className="opacity-70">{item.type === "directory" ? "📁" : "📄"}</span>
+                   <span className="truncate font-mono text-xs">{item.name}</span>
+                 </button>
+               ))}
+               {files.length === 0 && (
+                  <div className="text-sm text-gray-400 italic text-center py-8">Empty directory</div>
+               )}
             </div>
-            <div className="border border-gray-200 rounded-lg p-3 bg-gray-50 h-[420px] overflow-hidden flex flex-col">
-              {!focus && (
-                <div className="flex flex-col items-center justify-center h-full text-gray-400 space-y-2">
-                  <span className="text-4xl">📄</span>
-                  <span className="text-sm">Select a file to preview</span>
-                </div>
-              )}
-              {focus && (
-                <div className="flex flex-col h-full">
-                  <div className="text-sm font-semibold text-gray-900 mb-2 px-1 py-1 border-b border-gray-200 bg-white rounded-t">
-                    {focus.path}
+            
+            {/* Preview Pane */}
+            <div className="flex-1 bg-white overflow-hidden flex flex-col">
+               {focus ? (
+                  <>
+                     <div className="px-4 py-2 border-b border-gray-100 text-xs font-mono text-gray-500 bg-gray-50">
+                        {focus.path}
+                     </div>
+                     <div className="flex-1 overflow-auto p-4">
+                        <pre className="text-xs font-mono text-gray-800 whitespace-pre-wrap">{preview}</pre>
+                     </div>
+                  </>
+               ) : (
+                  <div className="flex flex-col items-center justify-center h-full text-gray-300">
+                     <span className="text-5xl mb-2">👁️</span>
+                     <span className="text-sm font-medium">Select a file to preview</span>
                   </div>
-                  <div className="flex-1 overflow-auto bg-white rounded-b p-2">
-                    <pre className="text-xs whitespace-pre-wrap text-gray-800 font-mono leading-relaxed">{preview}</pre>
-                  </div>
-                </div>
-              )}
+               )}
             </div>
           </div>
         </div>
@@ -2465,187 +2890,170 @@ function ProjectHub({
             className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4 backdrop-blur-sm"
             role="dialog"
             aria-modal="true"
-            aria-labelledby="add-project-title"
           >
             <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 space-y-4">
               <div className="flex items-center justify-between">
-                <h3 id="add-project-title" className="text-lg font-semibold text-gray-900">
-                  Add Project
-                </h3>
+                <h3 className="text-lg font-bold text-gray-900">Add Project</h3>
+                <button onClick={() => setAddOpen(false)} className="text-gray-400 hover:text-gray-600">✕</button>
+              </div>
+              
+              <div className="space-y-4">
+                 <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-1">Directory Path</label>
+                    <div className="flex gap-2">
+                       <input
+                          value={dir}
+                          onChange={(e) => setDir(e.target.value)}
+                          placeholder="/path/to/project"
+                          className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                       />
+                       <button
+                          onClick={() => {
+                             setBrowseQuery(dir)
+                             setBrowseOpen(true)
+                          }}
+                          className="px-3 py-2 bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200 text-sm font-medium"
+                       >
+                          Browse
+                       </button>
+                    </div>
+                 </div>
+                 
+                 <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-1">Project Name (Optional)</label>
+                    <input
+                       value={name}
+                       onChange={(e) => setName(e.target.value)}
+                       placeholder="My Awesome Project"
+                       className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                 </div>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-4 border-t border-gray-100">
                 <button
                   onClick={() => setAddOpen(false)}
-                  className="text-gray-400 hover:text-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded p-1"
-                  aria-label="Close"
-                >
-                  ✕
-                </button>
-              </div>
-              <div className="flex items-center gap-2">
-                <label htmlFor="proj-dir" className="sr-only">
-                  Directory
-                </label>
-                <input
-                  id="proj-dir"
-                  value={dir}
-                  onChange={(event) => setDir(event.target.value)}
-                  placeholder="Directory path"
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-                <button
-                  onClick={() => {
-                    setBrowseQuery(dir)
-                    setBrowseOpen(true)
-                  }}
-                  className="text-sm px-3 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  Browse
-                </button>
-              </div>
-              <label htmlFor="proj-name" className="sr-only">
-                Name
-              </label>
-              <input
-                id="proj-name"
-                value={name}
-                onChange={(event) => setName(event.target.value)}
-                placeholder="Project name (optional)"
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-              <div className="flex items-center justify-end gap-2">
-                <button
-                  onClick={() => setAddOpen(false)}
-                  className="text-sm px-3 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg text-sm font-medium"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={handleAdd}
-                  className="gradient-bg text-white px-4 py-2 rounded-lg text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="gradient-bg text-white px-4 py-2 rounded-lg text-sm font-medium hover:opacity-90"
                 >
-                  Add
+                  Add Project
                 </button>
               </div>
             </div>
           </div>
         )}
+        
         {browseOpen && (
           <div
             className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4 backdrop-blur-sm"
             role="dialog"
             aria-modal="true"
-            aria-labelledby="browse-dirs-title"
           >
             <div className="bg-white rounded-xl shadow-xl w-full max-w-lg p-6 space-y-4">
               <div className="flex items-center justify-between">
-                <h3 id="browse-dirs-title" className="text-lg font-semibold text-gray-900">
-                  Browse Directories
-                </h3>
-                <button
-                  onClick={() => setBrowseOpen(false)}
-                  className="text-gray-400 hover:text-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded p-1"
-                  aria-label="Close"
-                >
-                  ✕
-                </button>
+                <h3 className="text-lg font-bold text-gray-900">Browse Directories</h3>
+                <button onClick={() => setBrowseOpen(false)} className="text-gray-400 hover:text-gray-600">✕</button>
               </div>
-              <label htmlFor="browse-query" className="sr-only">
-                Search
-              </label>
+              
               <input
-                id="browse-query"
                 value={browseQuery}
-                onChange={(event) => setBrowseQuery(event.target.value)}
-                placeholder="Search directories..."
+                onChange={(e) => setBrowseQuery(e.target.value)}
+                placeholder="Search paths..."
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                autoFocus
               />
-              <div className="flex items-center justify-between text-xs text-gray-500">
-                <span>Results from /path search</span>
-                {rootDir && (
-                  <button
-                    onClick={() => {
-                      setDir(rootDir)
-                      setBrowseOpen(false)
-                    }}
-                    className="text-xs text-blue-600 hover:underline focus:outline-none focus:ring-2 focus:ring-blue-500 rounded"
-                  >
-                    Use project root
-                  </button>
-                )}
-              </div>
-              <div
-                className="border border-gray-200 rounded-lg p-3 max-h-64 overflow-y-auto space-y-2"
-                role="list"
-                aria-label="Directory list"
-              >
-                {browseLoading && <div className="text-sm text-gray-500 animate-pulse">Searching...</div>}
-                {!browseLoading && (!browseResults || browseResults.length === 0) && (
-                  <div className="text-sm text-gray-500 italic">No directories found.</div>
-                )}
-                {Array.isArray(browseResults) &&
-                  browseResults.map((item) => {
+              
+              <div className="border border-gray-200 rounded-lg max-h-64 overflow-y-auto divide-y divide-gray-100">
+                 {browseLoading && <div className="p-4 text-center text-gray-500 text-sm">Searching...</div>}
+                 
+                 {!browseLoading && browseResults.map((item) => {
                     const path = item.path ?? item.absolute ?? item
                     return (
-                      <button
-                        key={path}
-                        role="listitem"
-                        onClick={() => {
-                          setDir(path)
-                          setBrowseOpen(false)
-                        }}
-                        className="w-full text-left text-sm px-2 py-1.5 rounded hover:bg-gray-100 font-mono transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      >
-                        <span className="mr-2" aria-hidden="true">
-                          📁
-                        </span>
-                        {path}
-                      </button>
+                       <button
+                          key={path}
+                          onClick={() => {
+                             setDir(path)
+                             setBrowseOpen(false)
+                          }}
+                          className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 font-mono truncate"
+                       >
+                          📁 {path}
+                       </button>
                     )
-                  })}
+                 })}
+                 
+                 {!browseLoading && browseResults.length === 0 && (
+                    <div className="p-4 text-center text-gray-400 text-sm italic">No directories found</div>
+                 )}
               </div>
-              <div className="flex items-center justify-end gap-2">
-                <button
-                  onClick={() => setBrowseOpen(false)}
-                  className="text-sm px-3 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  Close
-                </button>
+              
+              <div className="flex justify-end">
+                 <button
+                    onClick={() => setBrowseOpen(false)}
+                    className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg text-sm font-medium"
+                 >
+                    Close
+                 </button>
               </div>
             </div>
           </div>
         )}
+        
+        {/* Edit Modal (Rename) */}
+        {edit && (
+           <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+              <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6 space-y-4">
+                 <h3 className="text-lg font-bold text-gray-900">Rename Project</h3>
+                 <input
+                    value={editName}
+                    onChange={(e) => setEditName(e.target.value)}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                 />
+                 <div className="flex justify-end gap-2">
+                    <button
+                       onClick={() => setEdit(null)}
+                       className="px-3 py-2 text-gray-600 hover:bg-gray-100 rounded-lg text-sm"
+                    >
+                       Cancel
+                    </button>
+                    <button
+                       onClick={handleRename}
+                       className="gradient-bg text-white px-4 py-2 rounded-lg text-sm font-medium"
+                    >
+                       Save
+                    </button>
+                 </div>
+              </div>
+           </div>
+        )}
+        
         {gitOpen && (
           <div
             className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4 backdrop-blur-sm"
             role="dialog"
             aria-modal="true"
-            aria-labelledby="git-setup-title"
           >
             <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 space-y-4">
               <div className="flex items-center justify-between">
-                <h3 id="git-setup-title" className="text-lg font-semibold text-gray-900">
-                  Git Setup
-                </h3>
-                <button
-                  onClick={() => setGitOpen(false)}
-                  className="text-gray-400 hover:text-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded p-1"
-                  aria-label="Close"
-                >
-                  ✕
-                </button>
+                <h3 className="text-lg font-bold text-gray-900">Git Setup</h3>
+                <button onClick={() => setGitOpen(false)} className="text-gray-400 hover:text-gray-600">✕</button>
               </div>
-              <div className="text-sm text-gray-600 space-y-3">
-                <div>
-                  <div className="font-medium mb-1">Initialize a repo:</div>
-                  <code className="block bg-gray-100 rounded-lg p-2 text-xs font-mono border border-gray-200">
-                    git init
-                  </code>
-                </div>
-                <div>
-                  <div className="font-medium mb-1">Add OpenCode project marker:</div>
-                  <code className="block bg-gray-100 rounded-lg p-2 text-xs font-mono border border-gray-200 overflow-x-auto">
-                    echo $(git rev-list --max-parents=0 --all | head -n1) &gt; .git/opencode
-                  </code>
-                </div>
+              <div className="space-y-4">
+                 <div className="bg-gray-50 p-3 rounded-lg border border-gray-200">
+                    <div className="text-xs font-bold text-gray-700 uppercase mb-2">Initialize Repo</div>
+                    <code className="text-xs font-mono bg-white p-2 rounded block border border-gray-200">git init</code>
+                 </div>
+                 <div className="bg-gray-50 p-3 rounded-lg border border-gray-200">
+                    <div className="text-xs font-bold text-gray-700 uppercase mb-2">Add OpenCode Marker</div>
+                    <code className="text-xs font-mono bg-white p-2 rounded block border border-gray-200 overflow-x-auto">
+                       echo $(git rev-list --max-parents=0 --all | head -n1) &gt; .git/opencode
+                    </code>
+                 </div>
               </div>
             </div>
           </div>
@@ -2743,254 +3151,272 @@ function Integrations({
 
   const list = tab === "github" ? github : tab === "gitlab" ? gitlab : linear
 
+  const StatusBadge = ({ status }) => {
+    let color = "bg-gray-100 text-gray-700"
+    const s = (status || "").toLowerCase()
+    if (s.includes("open") || s === "active" || s.includes("progress")) color = "bg-blue-100 text-blue-700"
+    if (s === "merged" || s === "done" || s === "completed") color = "bg-green-100 text-green-700"
+    if (s === "closed" || s === "canceled") color = "bg-red-100 text-red-700"
+    if (s === "review") color = "bg-purple-100 text-purple-700"
+
+    return (
+      <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider ${color}`}>
+        {status || "Unknown"}
+      </span>
+    )
+  }
+
+  const IntegrationCard = ({ item, onRemove }) => (
+    <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-shadow flex flex-col justify-between h-full">
+      <div>
+        <div className="flex items-start justify-between gap-2 mb-2">
+          <h3 className="font-semibold text-gray-900 text-sm line-clamp-2" title={item.title}>
+            {item.title}
+          </h3>
+          <StatusBadge status={item.status} />
+        </div>
+        <div className="text-xs text-gray-500 mb-4 line-clamp-1">
+          {item.kind && <span className="uppercase font-mono mr-2 text-gray-400">{item.kind}</span>}
+          <a
+            href={item.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-blue-600 hover:underline hover:text-blue-800 inline-flex items-center gap-1"
+          >
+            Open Link <span>↗</span>
+          </a>
+        </div>
+      </div>
+      <div className="pt-3 border-t border-gray-100 flex justify-end">
+        <button
+          onClick={() => onRemove(item.id)}
+          className="text-xs text-gray-400 hover:text-red-600 font-medium transition-colors"
+        >
+          Remove
+        </button>
+      </div>
+    </div>
+  )
+
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold text-gray-900">🔗 Integrations</h2>
-        <p className="text-gray-600">Track issues and PRs across GitHub, GitLab, and Linear.</p>
-      </div>
-
-      <div role="tablist" className="flex flex-wrap gap-2">
-        {tabs.map((item) => (
-          <button
-            key={item}
-            role="tab"
-            aria-selected={tab === item}
-            aria-controls={`panel-${item}`}
-            onClick={() => setTab(item)}
-            className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-              tab === item ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-            }`}
-          >
-            {item.toUpperCase()}
-          </button>
-        ))}
-      </div>
-
-      <div id={`panel-${tab}`} role="tabpanel" className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 space-y-3">
-        {tab === "github" && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div className="space-y-1">
-              <label htmlFor="gh-repo" className="sr-only">GitHub Owner/Repo</label>
-              <input
-                id="gh-repo"
-                value={ghRepo}
-                onChange={(event) => setGhRepo(event.target.value)}
-                placeholder="owner/repo"
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-            <div className="space-y-1">
-              <label htmlFor="gh-token" className="sr-only">GitHub Token</label>
-              <input
-                id="gh-token"
-                type="password"
-                value={ghToken}
-                onChange={(event) => setGhToken(event.target.value)}
-                placeholder="GitHub token"
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-          </div>
-        )}
-        {tab === "gitlab" && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div className="space-y-1">
-              <label htmlFor="gl-project" className="sr-only">GitLab Project</label>
-              <input
-                id="gl-project"
-                value={glProject}
-                onChange={(event) => setGlProject(event.target.value)}
-                placeholder="group/project or id"
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-            <div className="space-y-1">
-              <label htmlFor="gl-host" className="sr-only">GitLab Host</label>
-              <input
-                id="gl-host"
-                value={glHost}
-                onChange={(event) => setGlHost(event.target.value)}
-                placeholder="https://gitlab.com"
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-            <div className="space-y-1 md:col-span-2">
-              <label htmlFor="gl-token" className="sr-only">GitLab Token</label>
-              <input
-                id="gl-token"
-                type="password"
-                value={glToken}
-                onChange={(event) => setGlToken(event.target.value)}
-                placeholder="GitLab token"
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-          </div>
-        )}
-        {tab === "linear" && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div className="space-y-1">
-              <label htmlFor="lin-team" className="sr-only">Linear Team</label>
-              <input
-                id="lin-team"
-                value={linTeam}
-                onChange={(event) => setLinTeam(event.target.value)}
-                placeholder="Team"
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-            <div className="space-y-1">
-              <label htmlFor="lin-token" className="sr-only">Linear Token</label>
-              <input
-                id="lin-token"
-                type="password"
-                value={linToken}
-                onChange={(event) => setLinToken(event.target.value)}
-                placeholder="Linear token"
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-          </div>
-        )}
-        <div className="flex items-center gap-2 pt-2">
-          <button
-            onClick={saveConfig}
-            className="text-xs px-3 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            Save Config
-          </button>
-          <button
-            onClick={sync}
-            className="text-xs px-3 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            Sync Now
-          </button>
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-2xl font-bold text-gray-900">🔗 Integrations</h2>
+          <p className="text-gray-600">Track issues and PRs across GitHub, GitLab, and Linear.</p>
+        </div>
+        <div className="flex bg-gray-100 p-1 rounded-lg">
+          {tabs.map((item) => (
+            <button
+              key={item}
+              onClick={() => setTab(item)}
+              className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${
+                tab === item ? "bg-white text-blue-600 shadow-sm" : "text-gray-500 hover:text-gray-700"
+              }`}
+            >
+              {item.charAt(0).toUpperCase() + item.slice(1)}
+            </button>
+          ))}
         </div>
       </div>
 
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 space-y-3">
-        <h3 className="text-sm font-semibold text-gray-900">Manual Entry</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <label htmlFor="entry-title" className="sr-only">Title</label>
-          <input
-            id="entry-title"
-            value={title}
-            onChange={(event) => setTitle(event.target.value)}
-            placeholder="Title"
-            className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-          <label htmlFor="entry-status" className="sr-only">Status</label>
-          <input
-            id="entry-status"
-            value={status}
-            onChange={(event) => setStatus(event.target.value)}
-            placeholder="Status"
-            className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-          <label htmlFor="entry-url" className="sr-only">URL</label>
-          <input
-            id="entry-url"
-            value={url}
-            onChange={(event) => setUrl(event.target.value)}
-            placeholder="URL"
-            className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-          {tab === "linear" ? (
-            <>
-              <label htmlFor="entry-team" className="sr-only">Team</label>
-              <input
-                id="entry-team"
-                value={team}
-                onChange={(event) => setTeam(event.target.value)}
-                placeholder="Team"
-                className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </>
-          ) : (
-            <>
-              <label htmlFor="entry-repo" className="sr-only">Repo</label>
-              <input
-                id="entry-repo"
-                value={repo}
-                onChange={(event) => setRepo(event.target.value)}
-                placeholder="Repo"
-                className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </>
-          )}
-          {tab === "github" && (
-            <>
-              <label htmlFor="entry-kind" className="sr-only">Kind</label>
-              <select
-                id="entry-kind"
-                value={kind}
-                onChange={(event) => setKind(event.target.value)}
-                className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-              >
-                <option value="issue">Issue</option>
-                <option value="pull">PR</option>
-              </select>
-            </>
-          )}
-          {tab === "gitlab" && (
-            <>
-              <label htmlFor="entry-kind" className="sr-only">Kind</label>
-              <select
-                id="entry-kind"
-                value={kind}
-                onChange={(event) => setKind(event.target.value)}
-                className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-              >
-                <option value="issue">Issue</option>
-                <option value="merge">MR</option>
-              </select>
-            </>
-          )}
-          <button
-            onClick={handleAdd}
-            className="gradient-bg text-white px-3 py-2 rounded-lg text-sm font-medium shadow-sm hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1"
-          >
-            Add Entry
-          </button>
-        </div>
-      </div>
-
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 space-y-2" role="list">
-        {list.map((item) => (
-          <div
-            key={item.id}
-            role="listitem"
-            className="flex items-start justify-between gap-3 p-2 rounded hover:bg-gray-50 transition-colors"
-          >
-            <div>
-              <div className="text-sm font-semibold text-gray-900">{item.title}</div>
-              <div className="text-xs text-gray-500">
-                {item.status} ·{" "}
-                <a
-                  href={item.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-blue-600 hover:underline focus:outline-none focus:ring-2 focus:ring-blue-500 rounded px-1"
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Left Column: Configuration & Manual Entry */}
+        <div className="space-y-6 lg:col-span-1">
+          {/* Configuration Card */}
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
+            <h3 className="text-sm font-bold text-gray-900 mb-4 uppercase tracking-wider flex items-center gap-2">
+              <span className="text-lg">⚙️</span> Configuration
+            </h3>
+            <div className="space-y-4">
+              {tab === "github" && (
+                <>
+                  <div>
+                    <label className="text-xs font-medium text-gray-500 block mb-1">GitHub Owner/Repo</label>
+                    <input
+                      value={ghRepo}
+                      onChange={(e) => setGhRepo(e.target.value)}
+                      placeholder="owner/repo"
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-gray-500 block mb-1">GitHub Token</label>
+                    <input
+                      type="password"
+                      value={ghToken}
+                      onChange={(e) => setGhToken(e.target.value)}
+                      placeholder="ghp_..."
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                </>
+              )}
+              {tab === "gitlab" && (
+                <>
+                  <div>
+                    <label className="text-xs font-medium text-gray-500 block mb-1">GitLab Host</label>
+                    <input
+                      value={glHost}
+                      onChange={(e) => setGlHost(e.target.value)}
+                      placeholder="https://gitlab.com"
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-gray-500 block mb-1">Project ID/Path</label>
+                    <input
+                      value={glProject}
+                      onChange={(e) => setGlProject(e.target.value)}
+                      placeholder="group/project"
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-gray-500 block mb-1">GitLab Token</label>
+                    <input
+                      type="password"
+                      value={glToken}
+                      onChange={(e) => setGlToken(e.target.value)}
+                      placeholder="glpat_..."
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                </>
+              )}
+              {tab === "linear" && (
+                <>
+                  <div>
+                    <label className="text-xs font-medium text-gray-500 block mb-1">Team ID</label>
+                    <input
+                      value={linTeam}
+                      onChange={(e) => setLinTeam(e.target.value)}
+                      placeholder="Team ID"
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-gray-500 block mb-1">Linear Token</label>
+                    <input
+                      type="password"
+                      value={linToken}
+                      onChange={(e) => setLinToken(e.target.value)}
+                      placeholder="lin_..."
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                </>
+              )}
+              <div className="flex gap-2 pt-2">
+                <button
+                  onClick={saveConfig}
+                  className="flex-1 bg-white border border-gray-200 text-gray-700 px-3 py-2 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors"
                 >
-                  Link
-                </a>
+                  Save Config
+                </button>
+                <button
+                  onClick={sync}
+                  className="flex-1 gradient-bg text-white px-3 py-2 rounded-lg text-sm font-medium hover:opacity-90 transition-opacity"
+                >
+                  Sync Now
+                </button>
               </div>
             </div>
-            <button
-              onClick={() => {
-                if (tab === "github") onRemoveGitHub(item.id)
-                if (tab === "gitlab") onRemoveGitLab(item.id)
-                if (tab === "linear") onRemoveLinear(item.id)
-              }}
-              className="text-xs text-gray-400 hover:text-red-500 focus:outline-none focus:text-red-500 p-1"
-              aria-label={`Remove entry ${item.title}`}
-            >
-              Remove
-            </button>
           </div>
-        ))}
-        {list.length === 0 && <div className="text-sm text-gray-500 italic">No entries yet.</div>}
+
+          {/* Manual Entry Card */}
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
+            <h3 className="text-sm font-bold text-gray-900 mb-4 uppercase tracking-wider flex items-center gap-2">
+              <span className="text-lg">✍️</span> Manual Entry
+            </h3>
+            <div className="space-y-3">
+              <input
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="Title"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <div className="grid grid-cols-2 gap-3">
+                <input
+                  value={status}
+                  onChange={(e) => setStatus(e.target.value)}
+                  placeholder="Status"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <input
+                  value={url}
+                  onChange={(e) => setUrl(e.target.value)}
+                  placeholder="URL"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              
+              {tab !== "linear" && (
+                <div className="grid grid-cols-2 gap-3">
+                   <input
+                    value={repo}
+                    onChange={(e) => setRepo(e.target.value)}
+                    placeholder="Repo"
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  <select
+                    value={kind}
+                    onChange={(e) => setKind(e.target.value)}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="issue">Issue</option>
+                    <option value={tab === "github" ? "pull" : "merge"}>
+                      {tab === "github" ? "PR" : "MR"}
+                    </option>
+                  </select>
+                </div>
+              )}
+
+              {tab === "linear" && (
+                 <input
+                  value={team}
+                  onChange={(e) => setTeam(e.target.value)}
+                  placeholder="Team"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              )}
+
+              <button
+                onClick={handleAdd}
+                className="w-full bg-gray-100 text-gray-700 px-3 py-2 rounded-lg text-sm font-medium hover:bg-gray-200 transition-colors"
+              >
+                Add Manual Entry
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Right Column: Items Grid */}
+        <div className="lg:col-span-2">
+          {list.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {list.map((item) => (
+                <IntegrationCard
+                  key={item.id}
+                  item={item}
+                  onRemove={(id) => {
+                    if (tab === "github") onRemoveGitHub(id)
+                    if (tab === "gitlab") onRemoveGitLab(id)
+                    if (tab === "linear") onRemoveLinear(id)
+                  }}
+                />
+              ))}
+            </div>
+          ) : (
+            <div className="bg-gray-50 border border-gray-200 border-dashed rounded-xl p-12 text-center">
+              <div className="text-4xl mb-4 opacity-20">📭</div>
+              <h3 className="text-gray-900 font-medium mb-1">No items found</h3>
+              <p className="text-sm text-gray-500">
+                Sync with {tab.charAt(0).toUpperCase() + tab.slice(1)} or add items manually to get started.
+              </p>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   )
@@ -3009,17 +3435,22 @@ function SystemOps({
   onUpdateSettings,
   onUpdateLimit,
 }) {
+  const [activeTab, setActiveTab] = useState("status")
   const types = ["feature", "fix", "update"]
   const noticeTypes = ["update", "alert", "info"]
+
   const [title, setTitle] = useState("")
   const [body, setBody] = useState("")
   const [type, setType] = useState(types[0])
+
   const [noticeTitle, setNoticeTitle] = useState("")
   const [noticeBody, setNoticeBody] = useState("")
   const [noticeType, setNoticeType] = useState(noticeTypes[0])
+
   const [limitValue, setLimitValue] = useState(limit.limit)
   const [usedValue, setUsedValue] = useState(limit.used)
   const [resetValue, setResetValue] = useState(new Date(limit.resetAt).toISOString().slice(0, 16))
+  const [editingLimit, setEditingLimit] = useState(false)
 
   useEffect(() => {
     setLimitValue(limit.limit)
@@ -3058,264 +3489,437 @@ function SystemOps({
   const handleLimit = async () => {
     const resetAt = new Date(resetValue).getTime()
     await onUpdateLimit({ limit: Number(limitValue), used: Number(usedValue), resetAt })
+    setEditingLimit(false)
   }
+
+  const StatCard = ({ icon, label, value, subtext, status = "active" }) => (
+    <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm flex items-start justify-between">
+      <div>
+        <div className="text-gray-500 text-xs font-medium uppercase tracking-wider mb-1">{label}</div>
+        <div className="text-2xl font-bold text-gray-900">{value}</div>
+        {subtext && <div className="text-xs text-gray-400 mt-1">{subtext}</div>}
+      </div>
+      <div
+        className={`p-2 rounded-lg ${status === "active" ? "bg-green-50 text-green-600" : "bg-gray-50 text-gray-400"}`}
+      >
+        {icon}
+      </div>
+    </div>
+  )
+
+  const ToggleSwitch = ({ label, checked, onChange, description }) => (
+    <div className="flex items-center justify-between py-3">
+      <div>
+        <div className="text-sm font-medium text-gray-900">{label}</div>
+        {description && <div className="text-xs text-gray-500">{description}</div>}
+      </div>
+      <button
+        onClick={() => onChange(!checked)}
+        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
+          checked ? "bg-blue-600" : "bg-gray-200"
+        }`}
+      >
+        <span
+          className={`inline-block h-4 w-4 transform rounded-full bg-white transition duration-200 ease-in-out ${
+            checked ? "translate-x-6" : "translate-x-1"
+          }`}
+        />
+      </button>
+    </div>
+  )
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold text-gray-900">🧩 System & Ops</h2>
-        <p className="text-gray-600">System status, rate limits, settings, and updates.</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-2xl font-bold text-gray-900">🧩 System & Ops</h2>
+          <p className="text-gray-600">Monitor infrastructure, manage settings, and track updates.</p>
+        </div>
+        <div className="flex bg-gray-100 p-1 rounded-lg">
+          {["status", "config", "updates"].map((tab) => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${
+                activeTab === tab ? "bg-white text-blue-600 shadow-sm" : "text-gray-500 hover:text-gray-700"
+              }`}
+            >
+              {tab.charAt(0).toUpperCase() + tab.slice(1)}
+            </button>
+          ))}
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 space-y-3">
-          <h3 className="text-sm font-semibold text-gray-900">Infrastructure Status</h3>
-          <div className="space-y-2 text-sm text-gray-700" role="list">
-            <div role="listitem">MCP servers: {count(infra.mcp)}</div>
-            <div role="listitem">LSP status: {count(infra.lsp)}</div>
-            <div role="listitem">Formatter status: {count(infra.formatter)}</div>
-            <div role="listitem">File status entries: {count(infra.file)}</div>
+      {activeTab === "status" && (
+        <div className="space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <StatCard
+              icon="🔌"
+              label="MCP Servers"
+              value={count(infra.mcp)}
+              subtext="Active connections"
+              status={count(infra.mcp) > 0 ? "active" : "inactive"}
+            />
+            <StatCard
+              icon="🧠"
+              label="LSP Services"
+              value={count(infra.lsp)}
+              subtext="Language servers"
+              status={count(infra.lsp) > 0 ? "active" : "inactive"}
+            />
+            <StatCard
+              icon="✨"
+              label="Formatters"
+              value={count(infra.formatter)}
+              subtext="Code formatters"
+              status={count(infra.formatter) > 0 ? "active" : "inactive"}
+            />
+            <StatCard
+              icon="📁"
+              label="File Index"
+              value={count(infra.file)}
+              subtext="Tracked files"
+              status={count(infra.file) > 0 ? "active" : "inactive"}
+            />
           </div>
-        </div>
 
-        <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 space-y-3">
-          <h3 className="text-sm font-semibold text-gray-900">Rate Limit</h3>
-          <div className="text-xs text-gray-500" aria-label={`Usage: ${limit.used} out of ${limit.limit}`}>
-            {limit.used} / {limit.limit}
-          </div>
-          <div
-            className="w-full bg-gray-200 rounded-full h-2"
-            role="progressbar"
-            aria-valuenow={progress}
-            aria-valuemin="0"
-            aria-valuemax="100"
-          >
-            <div className="bg-blue-600 h-2 rounded-full" style={{ width: `${progress}%` }} />
-          </div>
-          <div className="grid grid-cols-1 gap-2">
-            <label htmlFor="limit-input" className="sr-only">Limit</label>
-            <input
-              id="limit-input"
-              value={limitValue}
-              onChange={(event) => setLimitValue(event.target.value)}
-              className="border border-gray-300 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="Limit"
-            />
-            <label htmlFor="used-input" className="sr-only">Used</label>
-            <input
-              id="used-input"
-              value={usedValue}
-              onChange={(event) => setUsedValue(event.target.value)}
-              className="border border-gray-300 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="Used"
-            />
-            <label htmlFor="reset-input" className="sr-only">Reset Date</label>
-            <input
-              id="reset-input"
-              type="datetime-local"
-              value={resetValue}
-              onChange={(event) => setResetValue(event.target.value)}
-              className="border border-gray-300 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-            <button
-              onClick={handleLimit}
-              className="text-xs px-3 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              Update Limit
-            </button>
-          </div>
-        </div>
-
-        <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 space-y-3">
-          <h3 className="text-sm font-semibold text-gray-900">Settings</h3>
-          <div className="space-y-2 text-sm text-gray-700">
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={settings.agents.autoSelect}
-                onChange={(event) => toggle("agents", "autoSelect", event.target.checked)}
-                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-              />
-              Auto-select agents
-            </label>
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={settings.notifications.updates}
-                onChange={(event) => toggle("notifications", "updates", event.target.checked)}
-                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-              />
-              Update notifications
-            </label>
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={settings.notifications.errors}
-                onChange={(event) => toggle("notifications", "errors", event.target.checked)}
-                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-              />
-              Error alerts
-            </label>
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={settings.security.share}
-                onChange={(event) => toggle("security", "share", event.target.checked)}
-                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-              />
-              Allow sharing
-            </label>
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={settings.auth.requireApproval}
-                onChange={(event) => toggle("auth", "requireApproval", event.target.checked)}
-                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-              />
-              Require approvals
-            </label>
-            <div className="pt-2">
-              <label htmlFor="default-agent-select" className="text-xs text-gray-500 block mb-1">Default agent</label>
-              <select
-                id="default-agent-select"
-                value={settings.agents.defaultAgent}
-                onChange={(event) => toggle("agents", "defaultAgent", event.target.value)}
-                className="border border-gray-300 rounded-lg px-2 py-1 text-xs w-full focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h3 className="text-lg font-bold text-gray-900">API Rate Limits</h3>
+                <p className="text-sm text-gray-500">Usage tracking for model providers</p>
+              </div>
+              <button
+                onClick={() => setEditingLimit(!editingLimit)}
+                className="text-sm text-blue-600 hover:text-blue-700 font-medium"
               >
-                {agents.map((agent) => (
-                  <option key={agent.name} value={agent.name}>
-                    {agent.name}
-                  </option>
-                ))}
-              </select>
+                {editingLimit ? "Cancel Edit" : "Adjust Limits"}
+              </button>
+            </div>
+
+            {editingLimit ? (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 bg-gray-50 p-4 rounded-xl border border-gray-200">
+                <div>
+                  <label className="text-xs font-medium text-gray-500 block mb-1.5">Max Limit</label>
+                  <input
+                    type="number"
+                    value={limitValue}
+                    onChange={(e) => setLimitValue(e.target.value)}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-gray-500 block mb-1.5">Current Usage</label>
+                  <input
+                    type="number"
+                    value={usedValue}
+                    onChange={(e) => setUsedValue(e.target.value)}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-gray-500 block mb-1.5">Reset Date</label>
+                  <input
+                    type="datetime-local"
+                    value={resetValue}
+                    onChange={(e) => setResetValue(e.target.value)}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div className="md:col-span-3 flex justify-end">
+                  <button
+                    onClick={handleLimit}
+                    className="gradient-bg text-white px-4 py-2 rounded-lg text-sm font-medium"
+                  >
+                    Save Changes
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="flex items-end justify-between">
+                  <div className="text-3xl font-bold text-gray-900">
+                    {progress}% <span className="text-sm text-gray-500 font-normal">used</span>
+                  </div>
+                  <div className="text-sm text-gray-600 text-right">
+                    <div>
+                      <span className="font-semibold">{limit.used.toLocaleString()}</span> /{" "}
+                      {limit.limit.toLocaleString()} tokens
+                    </div>
+                    <div className="text-xs text-gray-400">Resets {new Date(limit.resetAt).toLocaleString()}</div>
+                  </div>
+                </div>
+                <div className="w-full bg-gray-100 rounded-full h-4 overflow-hidden">
+                  <div
+                    className={`h-full transition-all duration-500 ${
+                      progress > 90 ? "bg-red-500" : progress > 70 ? "bg-orange-500" : "bg-blue-500"
+                    }`}
+                    style={{ width: `${progress}%` }}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {activeTab === "config" && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+            <h3 className="text-lg font-bold text-gray-900 mb-4">Agent Behavior</h3>
+            <div className="divide-y divide-gray-100">
+              <ToggleSwitch
+                label="Auto-select Agents"
+                description="Automatically choose the best agent based on task analysis"
+                checked={settings.agents.autoSelect}
+                onChange={(val) => toggle("agents", "autoSelect", val)}
+              />
+              <div className="py-3">
+                <label className="text-sm font-medium text-gray-900 block mb-1">Default Agent</label>
+                <p className="text-xs text-gray-500 mb-2">
+                  Fallback agent when auto-selection is disabled or uncertain
+                </p>
+                <select
+                  value={settings.agents.defaultAgent}
+                  onChange={(e) => toggle("agents", "defaultAgent", e.target.value)}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  {agents.map((a) => (
+                    <option key={a.name} value={a.name}>
+                      {a.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+            <h3 className="text-lg font-bold text-gray-900 mb-4">System Notifications</h3>
+            <div className="divide-y divide-gray-100">
+              <ToggleSwitch
+                label="Update Notifications"
+                description="Show alerts for system updates and changelogs"
+                checked={settings.notifications.updates}
+                onChange={(val) => toggle("notifications", "updates", val)}
+              />
+              <ToggleSwitch
+                label="Error Alerts"
+                description="Pop up alerts when critical errors occur"
+                checked={settings.notifications.errors}
+                onChange={(val) => toggle("notifications", "errors", val)}
+              />
+            </div>
+          </div>
+
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+            <h3 className="text-lg font-bold text-gray-900 mb-4">Security & Auth</h3>
+            <div className="divide-y divide-gray-100">
+              <ToggleSwitch
+                label="Require Approval"
+                description="Ask for confirmation before executing file changes"
+                checked={settings.auth.requireApproval}
+                onChange={(val) => toggle("auth", "requireApproval", val)}
+              />
+              <ToggleSwitch
+                label="Allow Sharing"
+                description="Enable codebase sharing features"
+                checked={settings.security.share}
+                onChange={(val) => toggle("security", "share", val)}
+              />
             </div>
           </div>
         </div>
-      </div>
+      )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 space-y-3">
-          <h3 className="text-sm font-semibold text-gray-900">Changelog</h3>
-          <div className="space-y-2">
-            <label htmlFor="changelog-title" className="sr-only">Title</label>
-            <input
-              id="changelog-title"
-              value={title}
-              onChange={(event) => setTitle(event.target.value)}
-              placeholder="Title"
-              className="border border-gray-300 rounded-lg px-3 py-2 text-xs w-full focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-            <label htmlFor="changelog-body" className="sr-only">Details</label>
-            <textarea
-              id="changelog-body"
-              value={body}
-              onChange={(event) => setBody(event.target.value)}
-              placeholder="Details"
-              className="border border-gray-300 rounded-lg px-3 py-2 text-xs w-full h-20 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-            <label htmlFor="changelog-type" className="sr-only">Type</label>
-            <select
-              id="changelog-type"
-              value={type}
-              onChange={(event) => setType(event.target.value)}
-              className="border border-gray-300 rounded-lg px-3 py-2 text-xs w-full focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-            >
-              {types.map((item) => (
-                <option key={item} value={item}>
-                  {item}
-                </option>
-              ))}
-            </select>
-            <button
-              onClick={handleChangelog}
-              className="text-xs px-3 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              Add Entry
-            </button>
-          </div>
-          <div className="space-y-2" role="list">
-            {changelog.map((entry) => (
-              <div key={entry.id} role="listitem" className="text-xs text-gray-700 p-2 rounded hover:bg-gray-50 transition-colors">
-                <div className="font-semibold">
-                  {entry.title} · <span className="text-gray-500 font-normal">{entry.type}</span>
+      {activeTab === "updates" && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="space-y-4">
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+              <h3 className="text-lg font-bold text-gray-900 mb-4">Changelog</h3>
+              <div className="space-y-3 mb-6 bg-gray-50 p-4 rounded-xl border border-gray-200">
+                <input
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  placeholder="Entry title"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <textarea
+                  value={body}
+                  onChange={(e) => setBody(e.target.value)}
+                  placeholder="Details..."
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm h-20 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <div className="flex gap-2">
+                  <select
+                    value={type}
+                    onChange={(e) => setType(e.target.value)}
+                    className="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    {types.map((t) => (
+                      <option key={t} value={t}>
+                        {t}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    onClick={handleChangelog}
+                    className="flex-1 gradient-bg text-white rounded-lg text-sm font-medium"
+                  >
+                    Add Entry
+                  </button>
                 </div>
-                <div className="text-gray-500 mt-1">{entry.body}</div>
               </div>
-            ))}
-            {changelog.length === 0 && <div className="text-xs text-gray-500 italic">No changelog entries.</div>}
-          </div>
-        </div>
-
-        <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 space-y-3">
-          <h3 className="text-sm font-semibold text-gray-900">Update Notifications</h3>
-          <div className="space-y-2">
-            <label htmlFor="notice-title" className="sr-only">Title</label>
-            <input
-              id="notice-title"
-              value={noticeTitle}
-              onChange={(event) => setNoticeTitle(event.target.value)}
-              placeholder="Title"
-              className="border border-gray-300 rounded-lg px-3 py-2 text-xs w-full focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-            <label htmlFor="notice-body" className="sr-only">Message</label>
-            <textarea
-              id="notice-body"
-              value={noticeBody}
-              onChange={(event) => setNoticeBody(event.target.value)}
-              placeholder="Message"
-              className="border border-gray-300 rounded-lg px-3 py-2 text-xs w-full h-20 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-            <label htmlFor="notice-type" className="sr-only">Type</label>
-            <select
-              id="notice-type"
-              value={noticeType}
-              onChange={(event) => setNoticeType(event.target.value)}
-              className="border border-gray-300 rounded-lg px-3 py-2 text-xs w-full focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-            >
-              {noticeTypes.map((item) => (
-                <option key={item} value={item}>
-                  {item}
-                </option>
-              ))}
-            </select>
-            <button
-              onClick={handleNotice}
-              className="text-xs px-3 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              Add Notification
-            </button>
-          </div>
-          <div className="space-y-2" role="list">
-            {notifications.map((note) => (
-              <div
-                key={note.id}
-                role="listitem"
-                className="text-xs text-gray-700 flex items-start justify-between gap-3 p-2 rounded hover:bg-gray-50 transition-colors"
-              >
-                <div>
-                  <div className="font-semibold">
-                    {note.title} · <span className="text-gray-500 font-normal">{note.type}</span>
+              <div className="space-y-4 relative before:absolute before:left-4 before:top-2 before:bottom-2 before:w-0.5 before:bg-gray-200">
+                {changelog.map((entry) => (
+                  <div key={entry.id} className="relative pl-10">
+                    <div
+                      className={`absolute left-2.5 top-1.5 w-3 h-3 rounded-full border-2 border-white shadow-sm ${
+                        entry.type === "feature"
+                          ? "bg-blue-500"
+                          : entry.type === "fix"
+                            ? "bg-green-500"
+                            : "bg-gray-500"
+                      }`}
+                    />
+                    <div className="bg-white border border-gray-200 rounded-lg p-3 shadow-sm">
+                      <div className="flex justify-between items-start">
+                        <span className="font-semibold text-gray-900 text-sm">{entry.title}</span>
+                        <span className="text-[10px] uppercase font-bold text-gray-500">{entry.type}</span>
+                      </div>
+                      <p className="text-xs text-gray-600 mt-1">{entry.body}</p>
+                    </div>
                   </div>
-                  <div className="text-gray-500 mt-1">{note.body}</div>
-                </div>
-                <button
-                  onClick={() => onDismissNotification(note.id)}
-                  className="text-xs text-gray-400 hover:text-blue-600 focus:outline-none focus:text-blue-600 p-1"
-                  aria-label={note.read ? "Mark as unread" : "Dismiss notification"}
-                >
-                  {note.read ? "Read" : "Dismiss"}
-                </button>
+                ))}
+                {changelog.length === 0 && <div className="pl-10 text-sm text-gray-500 italic">No history available.</div>}
               </div>
-            ))}
-            {notifications.length === 0 && <div className="text-xs text-gray-500 italic">No notifications yet.</div>}
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+              <h3 className="text-lg font-bold text-gray-900 mb-4">Notifications</h3>
+              <div className="space-y-3 mb-6 bg-gray-50 p-4 rounded-xl border border-gray-200">
+                <input
+                  value={noticeTitle}
+                  onChange={(e) => setNoticeTitle(e.target.value)}
+                  placeholder="Notification title"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <textarea
+                  value={noticeBody}
+                  onChange={(e) => setNoticeBody(e.target.value)}
+                  placeholder="Message..."
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm h-20 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <div className="flex gap-2">
+                  <select
+                    value={noticeType}
+                    onChange={(e) => setNoticeType(e.target.value)}
+                    className="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    {noticeTypes.map((t) => (
+                      <option key={t} value={t}>
+                        {t}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    onClick={handleNotice}
+                    className="flex-1 gradient-bg text-white rounded-lg text-sm font-medium"
+                  >
+                    Post Notice
+                  </button>
+                </div>
+              </div>
+              <div className="space-y-2">
+                {notifications.map((note) => (
+                  <div
+                    key={note.id}
+                    className={`p-3 rounded-lg border ${
+                      note.read ? "bg-gray-50 border-gray-200" : "bg-blue-50 border-blue-100"
+                    } transition-colors`}
+                  >
+                    <div className="flex justify-between items-start">
+                      <div className="font-medium text-sm text-gray-900">{note.title}</div>
+                      <button
+                        onClick={() => onDismissNotification(note.id)}
+                        className="text-xs text-gray-400 hover:text-gray-600"
+                      >
+                        {note.read ? "Archive" : "Dismiss"}
+                      </button>
+                    </div>
+                    <p className="text-xs text-gray-600 mt-1">{note.body}</p>
+                    <div className="mt-2 flex items-center gap-2">
+                      <span
+                        className={`text-[10px] px-1.5 py-0.5 rounded font-medium uppercase ${
+                          note.type === "alert" ? "bg-red-100 text-red-700" : "bg-gray-200 text-gray-600"
+                        }`}
+                      >
+                        {note.type}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+                {notifications.length === 0 && (
+                  <div className="text-sm text-gray-500 italic text-center py-4">All caught up!</div>
+                )}
+              </div>
+            </div>
           </div>
         </div>
-      </div>
+      )}
     </div>
   )
 }
 
 function AgentTools({ agents }) {
+  const getAgentIcon = (name) => {
+    const n = name.toLowerCase()
+    if (n.includes("build") || n.includes("engineer")) return "🛠️"
+    if (n.includes("research") || n.includes("explore")) return "🔍"
+    if (n.includes("test") || n.includes("qa")) return "🧪"
+    if (n.includes("doc")) return "📝"
+    if (n.includes("review")) return "👀"
+    if (n.includes("security")) return "🛡️"
+    if (n.includes("chat")) return "💬"
+    return "🤖"
+  }
+
+  const AgentCard = ({ agent }) => (
+    <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 hover:shadow-md transition-shadow flex flex-col h-full">
+      <div className="flex items-start justify-between mb-4">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center text-xl">
+            {getAgentIcon(agent.name)}
+          </div>
+          <div>
+            <h3 className="font-bold text-gray-900 text-lg">{agent.name}</h3>
+            <div className="flex items-center gap-2 mt-1">
+              <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">
+                {agent.mode}
+              </span>
+            </div>
+          </div>
+        </div>
+        {agent.model && (
+          <div className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded font-mono border border-gray-200">
+            {agent.model.providerID}/{agent.model.modelID}
+          </div>
+        )}
+      </div>
+
+      <p className="text-sm text-gray-600 mb-6 flex-1">{agent.description || "No description provided."}</p>
+
+      <div className="pt-4 border-t border-gray-100 mt-auto">
+        <div className="flex items-center justify-between text-xs text-gray-500">
+          <span className="font-medium text-gray-700">Execution Strategy</span>
+          <span>{agent.steps ? `${agent.steps} steps` : "Default flow"}</span>
+        </div>
+      </div>
+    </div>
+  )
+
   return (
     <div className="space-y-6">
       <div>
@@ -3323,34 +3927,19 @@ function AgentTools({ agents }) {
         <p className="text-gray-600">Review available agents and their execution profiles.</p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4" role="list">
-        {agents.map((agent) => (
-          <div
-            key={agent.name}
-            role="listitem"
-            className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 hover:shadow-md transition-shadow"
-          >
-            <div className="flex items-start justify-between">
-              <div>
-                <div className="text-lg font-semibold text-gray-900">{agent.name}</div>
-                <div className="text-xs text-gray-500 flex items-center gap-1">
-                  <span className="font-medium">Mode:</span> {agent.mode}
-                </div>
-              </div>
-              {agent.model && (
-                <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded font-mono">
-                  {agent.model.providerID}/{agent.model.modelID}
-                </span>
-              )}
-            </div>
-            <div className="text-sm text-gray-600 mt-3">{agent.description || "No description provided."}</div>
-            <div className="text-xs text-gray-400 mt-2 flex items-center gap-1">
-              <span className="font-medium">Steps:</span> {agent.steps ?? "Default"}
-            </div>
-          </div>
-        ))}
-        {agents.length === 0 && <div className="text-sm text-gray-500 italic">No agents loaded.</div>}
-      </div>
+      {agents.length > 0 ? (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {agents.map((agent) => (
+            <AgentCard key={agent.name} agent={agent} />
+          ))}
+        </div>
+      ) : (
+        <div className="bg-gray-50 border border-gray-200 border-dashed rounded-xl p-12 text-center">
+          <div className="text-4xl mb-4 opacity-20">🤖</div>
+          <h3 className="text-gray-900 font-medium mb-1">No Agents Found</h3>
+          <p className="text-sm text-gray-500">Ensure your agent configurations are loaded correctly in the backend.</p>
+        </div>
+      )}
     </div>
   )
 }
@@ -3376,10 +3965,12 @@ function App() {
   const [competitors, setCompetitors] = useState([])
   const [projects, setProjects] = useState([])
   const [currentProject, setCurrentProject] = useState(null)
+  const [activeDirectory, setActiveDirectory] = useState("")
   const [worktrees, setWorktrees] = useState([])
   const [pathInfo, setPathInfo] = useState(null)
   const [files, setFiles] = useState([])
   const [filePath, setFilePath] = useState(".")
+  const [sendError, setSendError] = useState("")
   const [changelog, setChangelog] = useState([])
   const [notifications, setNotifications] = useState([])
   const [systemSettings, setSystemSettings] = useState({
@@ -3405,34 +3996,82 @@ function App() {
   const [roadmapBusy, setRoadmapBusy] = useState(false)
   const [ideaBusy, setIdeaBusy] = useState(false)
 
+  const directory = useMemo(() => activeDirectory || currentProject?.worktree || pathInfo?.directory || "", [activeDirectory, currentProject, pathInfo])
+
+  const buildURL = useCallback(
+    (path) => {
+      const url = new URL(path, window.location.origin)
+      if (directory) url.searchParams.set("directory", directory)
+      return url.toString()
+    },
+    [directory],
+  )
+
+  const classifyTaskKind = useCallback((text) => {
+    const value = (text || "").toLowerCase()
+    if (!value) return "analysis"
+    if (/\b(ui|ux|design|layout|copy|button|color|spacing|panel|modal)\b/.test(value)) return "ux"
+    if (/\b(test|refactor|bug|fix|implement|function|api|endpoint|typescript|component)\b/.test(value)) return "code"
+    if (/\b(roadmap|ideation|idea|feature|competitor|plan)\b/.test(value)) return "ux"
+    return "analysis"
+  }, [])
+
+  const autoSelectModel = useCallback(
+    (kind) => {
+      if (!models.length) return modelChoice
+      const choice = kind || "analysis"
+      const picks = {
+        ux: ["gemini", "google"],
+        code: ["claude", "gpt", "sonnet", "haiku"],
+        analysis: ["claude", "gpt", "gemini"],
+      }
+      const list = picks[choice] || picks.analysis
+      const found = list
+        .map((needle) => needle.toLowerCase())
+        .map((needle) =>
+          models.find((item) => {
+            const label = item.label.toLowerCase()
+            const provider = item.providerID?.toLowerCase?.() || ""
+            const model = item.modelID?.toLowerCase?.() || ""
+            return label.includes(needle) || provider.includes(needle) || model.includes(needle)
+          }),
+        )
+        .find(Boolean)
+      const key = found?.key || modelChoice || models[0]?.key || ""
+      if (key && key !== modelChoice) setModelChoice(key)
+      return key
+    },
+    [modelChoice, models],
+  )
+
   useEffect(() => {
     const load = async () => {
-      const taskRes = await fetch("/app/kanban")
-      const roadmapRes = await fetch("/app/roadmap")
-      const ideationRes = await fetch("/app/ideation")
-      const memoryRes = await fetch("/app/context/memories")
-      const indexRes = await fetch("/app/context/index")
-      const agentRes = await fetch("/agent")
-      const sessionRes = await fetch("/session?limit=20")
-      const statusRes = await fetch("/session/status")
-      const providerRes = await fetch("/provider")
-      const competitorRes = await fetch("/app/insights/competitors")
+      const taskRes = await fetch(buildURL("/app/kanban"))
+      const roadmapRes = await fetch(buildURL("/app/roadmap"))
+      const ideationRes = await fetch(buildURL("/app/ideation"))
+      const memoryRes = await fetch(buildURL("/app/context/memories"))
+      const indexRes = await fetch(buildURL("/app/context/index"))
+      const agentRes = await fetch(buildURL("/agent"))
+      const sessionRes = await fetch(buildURL("/session?limit=20"))
+      const statusRes = await fetch(buildURL("/session/status"))
+      const providerRes = await fetch(buildURL("/provider"))
+      const competitorRes = await fetch(buildURL("/app/insights/competitors"))
       const projectRes = await fetch("/project")
-      const currentRes = await fetch("/project/current")
-      const worktreeRes = await fetch("/experimental/worktree")
-      const pathRes = await fetch("/path")
-      const changelogRes = await fetch("/app/system/changelog")
-      const noticeRes = await fetch("/app/system/notifications")
-      const settingsRes = await fetch("/app/system/settings")
-      const limitRes = await fetch("/app/system/limit")
-      const mcpRes = await fetch("/mcp/status")
-      const lspRes = await fetch("/lsp/status")
-      const formatterRes = await fetch("/formatter/status")
-      const fileRes = await fetch("/file/status")
-      const githubRes = await fetch("/app/integrations/github")
-      const gitlabRes = await fetch("/app/integrations/gitlab")
-      const linearRes = await fetch("/app/integrations/linear")
-      const configRes = await fetch("/app/integrations/config")
+      const currentRes = await fetch(buildURL("/project/current"))
+      const worktreeRes = await fetch(buildURL("/experimental/worktree"))
+      const pathRes = await fetch(buildURL("/path"))
+      const changelogRes = await fetch(buildURL("/app/system/changelog"))
+      const noticeRes = await fetch(buildURL("/app/system/notifications"))
+      const settingsRes = await fetch(buildURL("/app/system/settings"))
+      const limitRes = await fetch(buildURL("/app/system/limit"))
+      const mcpRes = await fetch(buildURL("/mcp/status"))
+      const lspRes = await fetch(buildURL("/lsp/status"))
+      const formatterRes = await fetch(buildURL("/formatter/status"))
+      const fileRes = await fetch(buildURL("/file/status"))
+      const githubRes = await fetch(buildURL("/app/integrations/github"))
+      const gitlabRes = await fetch(buildURL("/app/integrations/gitlab"))
+      const linearRes = await fetch(buildURL("/app/integrations/linear"))
+      const configRes = await fetch(buildURL("/app/integrations/config"))
 
       const taskData = await taskRes.json()
       const roadmapData = await roadmapRes.json()
@@ -3488,7 +4127,12 @@ function App() {
       setCurrentProject(currentData)
       setWorktrees(worktreeData)
       setPathInfo(pathData)
-      setFilePath((current) => (current && current !== "." ? current : (pathData.directory ?? ".")))
+      setFilePath((current) => {
+        if (current && current !== ".") return current
+        if (directory) return directory
+        if (pathData.directory) return pathData.directory
+        return "."
+      })
       setChangelog(changelogData)
       setNotifications(noticeData)
       setSystemSettings(settingsData)
@@ -3501,15 +4145,18 @@ function App() {
     }
 
     load()
-  }, [])
+  }, [buildURL, directory])
 
-  const loadMessages = useCallback(async (sessionID) => {
-    if (!sessionID) return []
-    const response = await fetch(`/session/${sessionID}/message`)
-    const data = await response.json()
-    setMessages(data)
-    return data
-  }, [])
+  const loadMessages = useCallback(
+    async (sessionID) => {
+      if (!sessionID) return []
+      const response = await fetch(buildURL(`/session/${sessionID}/message`))
+      const data = await response.json()
+      setMessages(data)
+      return data
+    },
+    [buildURL],
+  )
 
   useEffect(() => {
     if (!activeSession) return
@@ -3517,30 +4164,33 @@ function App() {
     if (!live) return
     const interval = setInterval(() => {
       loadMessages(activeSession)
-      fetch("/session/status")
+      fetch(buildURL("/session/status"))
         .then((response) => response.json())
         .then((data) => setStatusMap(data))
         .catch(() => {})
       Promise.all([
-        fetch("/mcp/status").then((response) => response.json()),
-        fetch("/lsp/status").then((response) => response.json()),
-        fetch("/formatter/status").then((response) => response.json()),
-        fetch("/file/status").then((response) => response.json()),
+        fetch(buildURL("/mcp/status")).then((response) => response.json()),
+        fetch(buildURL("/lsp/status")).then((response) => response.json()),
+        fetch(buildURL("/formatter/status")).then((response) => response.json()),
+        fetch(buildURL("/file/status")).then((response) => response.json()),
       ])
         .then(([mcp, lsp, formatter, file]) => setInfra({ mcp, lsp, formatter, file }))
         .catch(() => {})
     }, 5000)
     return () => clearInterval(interval)
-  }, [activeSession, live, loadMessages])
+  }, [activeSession, buildURL, live, loadMessages])
 
-  const loadFiles = useCallback(async (target) => {
-    if (!target) return
-    const url = new URL("/file", window.location.origin)
-    url.searchParams.set("path", target)
-    const response = await fetch(url.toString())
-    const data = await response.json()
-    setFiles(data)
-  }, [])
+  const loadFiles = useCallback(
+    async (target) => {
+      if (!target) return
+      const url = new URL(buildURL("/file"))
+      url.searchParams.set("path", target)
+      const response = await fetch(url.toString())
+      const data = await response.json()
+      setFiles(data)
+    },
+    [buildURL],
+  )
 
   useEffect(() => {
     if (!filePath) return
@@ -3548,12 +4198,13 @@ function App() {
   }, [filePath, loadFiles])
 
   const refreshProjects = useCallback(async () => {
-    const [listRes, currentRes] = await Promise.all([fetch("/project"), fetch("/project/current")])
+    const listRes = await fetch("/project")
+    const currentRes = await fetch(buildURL("/project/current"))
     const listData = await listRes.json()
     const currentData = await currentRes.json()
     setProjects(listData)
     setCurrentProject(currentData)
-  }, [])
+  }, [buildURL])
 
   const updateProject = useCallback(async (projectID, payload) => {
     const response = await fetch(`/project/${projectID}`, {
@@ -3584,27 +4235,38 @@ function App() {
   }, [])
 
   const refreshWorktrees = useCallback(async () => {
-    const response = await fetch("/experimental/worktree")
+    const response = await fetch(buildURL("/experimental/worktree"))
     const data = await response.json()
     setWorktrees(data)
-  }, [])
+  }, [buildURL])
 
-  const createWorktree = useCallback(async (payload) => {
-    const response = await fetch("/experimental/worktree", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    })
-    const worktree = await response.json()
-    setWorktrees((items) => [worktree.directory, ...items])
-  }, [])
+  const createWorktree = useCallback(
+    async (payload) => {
+      const response = await fetch(buildURL("/experimental/worktree"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      })
+      const worktree = await response.json()
+      setWorktrees((items) => [worktree.directory, ...items])
+    },
+    [buildURL],
+  )
 
   const setPath = useCallback((value) => {
     setFilePath(value || ".")
   }, [])
 
+  const selectProject = useCallback((project) => {
+    if (!project) return
+    const target = project.worktree || project.sandboxes?.[0] || "."
+    setCurrentProject(project)
+    setActiveDirectory(project.worktree || "")
+    setFilePath(target)
+  }, [])
+
   const createSession = useCallback(async () => {
-    const response = await fetch("/session", {
+    const response = await fetch(buildURL("/session"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ title: "Insights Session" }),
@@ -3613,17 +4275,20 @@ function App() {
     setSessions((items) => [session, ...items])
     setActiveSession(session.id)
     return session
-  }, [])
+  }, [buildURL])
 
-  const renameSession = useCallback(async (sessionID, title) => {
-    const response = await fetch(`/session/${sessionID}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title }),
-    })
-    const session = await response.json()
-    setSessions((items) => items.map((item) => (item.id === session.id ? session : item)))
-  }, [])
+  const renameSession = useCallback(
+    async (sessionID, title) => {
+      const response = await fetch(buildURL(`/session/${sessionID}`), {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title }),
+      })
+      const session = await response.json()
+      setSessions((items) => items.map((item) => (item.id === session.id ? session : item)))
+    },
+    [buildURL],
+  )
 
   const selectSession = useCallback((sessionID) => {
     setActiveSession(sessionID)
@@ -3641,111 +4306,53 @@ function App() {
     setModelChoice(value)
   }, [])
 
-  const sendPrompt = useCallback(async (override, sessionOverride) => {
-    const content = (override ?? prompt).trim()
-    const sessionID = sessionOverride ?? activeSession
-    if (!sessionID || !content) return
-    setSending(true)
-    const chosen = models.find((item) => item.key === modelChoice)
-    const model = chosen ? { providerID: chosen.providerID, modelID: chosen.modelID } : undefined
-    const body = {
-      parts: [{ type: "text", text: content }],
-      agent: agentChoice || undefined,
-      model,
-    }
-    const response = await fetch(`/session/${sessionID}/message`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    })
-    const text = await response.text()
-    if (text) JSON.parse(text)
-    if (!override) setPrompt("")
-    await loadMessages(sessionID)
-    setSending(false)
-  }, [activeSession, agentChoice, modelChoice, models, loadMessages, prompt])
-
   const ensureSession = useCallback(async () => {
     if (activeSession) return activeSession
     const session = await createSession()
     return session?.id ?? ""
   }, [activeSession, createSession])
 
-  const ideationLabels = {
-    code_improvements: "Code Improvements",
-    ui_ux_improvements: "UI/UX Improvements",
-    documentation_gaps: "Documentation",
-    security_hardening: "Security",
-    performance_optimizations: "Performance",
-    code_quality: "Code Quality",
-  }
-
-  const parseList = (text) => {
-    if (!text) return []
-    return text
-      .split("\n")
-      .map((line) => line.replace(/^[-*\d.\s]+/, "").trim())
-      .filter((line) => line.length > 0)
-  }
-
-  const parseRoadmapText = (text, phases) => {
-    const lines = text.split("\n")
-    const defaultPhase = phases[0] ?? "Foundation"
-    const result = lines.reduce(
-      (acc, line) => {
-        const heading = line.match(/^#{1,3}\s+(.*)/)
-        if (heading) return { ...acc, phase: heading[1].trim() }
-        const phaseMatch = line.match(/^(phase|stage)\s*:\s*(.+)$/i)
-        if (phaseMatch) return { ...acc, phase: phaseMatch[2].trim() }
-        const entry = line.replace(/^[-*\d.\s]+/, "").trim()
-        if (!entry) return acc
-        return {
-          ...acc,
-          items: [...acc.items, { title: entry, phase: acc.phase || defaultPhase }],
+  const sendPrompt = useCallback(
+    async (override, sessionOverride) => {
+      const content = (override ?? prompt).trim()
+      if (!content) return
+      const sessionID = sessionOverride ?? activeSession ?? (await ensureSession())
+      if (!sessionID) return
+      setActiveSession((current) => current || sessionID)
+      setSending(true)
+      setSendError("")
+      const selectedKey = autoSelectModel(classifyTaskKind(content))
+      const chosen = models.find((item) => item.key === selectedKey) || models.find((item) => item.key === modelChoice)
+      const model = chosen ? { providerID: chosen.providerID, modelID: chosen.modelID } : undefined
+      const body = {
+        parts: [{ type: "text", text: content }],
+        agent: agentChoice || undefined,
+        model,
+      }
+      try {
+        const response = await fetch(buildURL(`/session/${sessionID}/message`), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        })
+        if (!response.ok) {
+          const errorText = await response.text().catch(() => "")
+          const parsed = errorText ? JSON.parse(errorText).message?.toString?.() || errorText : "Request failed"
+          setSendError(parsed)
+          setSending(false)
+          return
         }
-      },
-      { phase: defaultPhase, items: [] },
-    )
-    return result.items
-  }
-
-  const parseIdeationText = (text, types) => {
-    if (!text) return []
-    const lines = text.split("\n")
-    const normalized = Object.entries(ideationLabels).reduce((acc, [key, label]) => {
-      const lower = label.toLowerCase()
-      acc[lower] = key
-      acc[key.replace(/_/g, " ")] = key
-      return acc
-    }, {})
-    const baseType = types[0] ?? "code_improvements"
-    const result = lines.reduce(
-      (acc, line) => {
-        const heading = line.match(/^(#{1,3}\s*)?([A-Za-z\s/]+)\s*[:\-]?\s*(.*)$/)
-        if (heading) {
-          const label = heading[2].trim().toLowerCase()
-          const nextType = normalized[label]
-          if (nextType) {
-            const tail = heading[3].trim()
-            if (!tail) return { ...acc, type: nextType }
-            return {
-              type: nextType,
-              items: [...acc.items, { title: tail, type: nextType }],
-            }
-          }
-        }
-        const entry = line.replace(/^[-*\d.\s]+/, "").trim()
-        if (!entry) return acc
-        const chosen = types.includes(acc.type) ? acc.type : baseType
-        return {
-          ...acc,
-          items: [...acc.items, { title: entry, type: chosen }],
-        }
-      },
-      { type: baseType, items: [] },
-    )
-    return result.items.length ? result.items : parseList(text).map((entry) => ({ title: entry, type: baseType }))
-  }
+        const text = await response.text()
+        if (text) JSON.parse(text)
+        if (!override) setPrompt("")
+        await loadMessages(sessionID)
+      } catch (error) {
+        setSendError(error?.message || "Failed to send message")
+      }
+      setSending(false)
+    },
+    [activeSession, agentChoice, autoSelectModel, buildURL, classifyTaskKind, ensureSession, loadMessages, modelChoice, models, prompt],
+  )
 
   const generateInsight = useCallback(async (text) => {
     const sessionID = await ensureSession()
@@ -3757,312 +4364,405 @@ function App() {
     return data
   }, [ensureSession, sendPrompt, loadMessages])
 
-  const createFeature = useCallback(async (payload) => {
-    const response = await fetch("/app/roadmap", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    })
-    const feature = await response.json()
-    setRoadmap((current) => ({
-      ...current,
-      features: [feature, ...current.features],
-    }))
-  }, [])
+  const createFeature = useCallback(
+    async (payload) => {
+      const response = await fetch(buildURL("/app/roadmap"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      })
+      const feature = await response.json()
+      setRoadmap((current) => ({
+        ...current,
+        features: [feature, ...current.features],
+      }))
+    },
+    [buildURL],
+  )
 
-  const createIdea = useCallback(async (payload) => {
-    const response = await fetch("/app/ideation", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    })
-    const idea = await response.json()
-    setIdeas((items) => [idea, ...items])
-  }, [])
+  const createIdea = useCallback(
+    async (payload) => {
+      const response = await fetch(buildURL("/app/ideation"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      })
+      const idea = await response.json()
+      setIdeas((items) => [idea, ...items])
+    },
+    [buildURL],
+  )
 
   const generateRoadmap = useCallback(
     (includeCompetitors) => {
       setRoadmapBusy(true)
-      const base = "Generate an AI-powered roadmap for this project with phases and milestones."
-      const promptText = includeCompetitors
-        ? `${base} Include competitor analysis and differentiation.`
-        : `${base} Generate roadmap without competitor analysis.`
-      const cleanup = () => setRoadmapBusy(false)
-      return generateInsight(promptText)
-        .then((data) => {
-          const latest = [...data].reverse().find((item) => item.info.role === "assistant")
-          const content = latest
-            ? latest.parts.filter((part) => part.type === "text").map((part) => part.text).join("\n")
-            : ""
-          const entries = parseRoadmapText(content, roadmap.phases)
-          return Promise.all(entries.map((entry) => createFeature({ title: entry.title, phase: entry.phase })))
-        })
-        .finally(cleanup)
+      autoSelectModel("ux")
+      const phases = roadmap.phases.length ? roadmap.phases : ["Foundation", "MVP", "Scale"]
+      const seeds = [
+        ...tasks.slice(0, 3).map((task) => `Ship: ${task.title}`),
+        ...ideas.slice(0, 3).map((idea) => `Validate: ${idea.title}`),
+        includeCompetitors ? "Competitive gap analysis" : "Quality and polish",
+        "Developer experience improvements",
+      ].filter(Boolean)
+      const timestamp = Date.now()
+      const generated = seeds.map((title, index) => ({
+        id: `gen-roadmap-${timestamp}-${index}`,
+        title,
+        phase: phases[index % phases.length],
+        status: "planned",
+        owner: "",
+      }))
+      setRoadmap((current) => ({
+        ...current,
+        features: [...generated, ...current.features],
+      }))
+      setRoadmapBusy(false)
     },
-    [generateInsight, roadmap.phases, createFeature],
+    [autoSelectModel, ideas, roadmap.phases, tasks],
   )
 
   const generateIdeation = useCallback(
     (types, maxIdeas) => {
       setIdeaBusy(true)
-      const list = types.length
-        ? types.map((item) => ideationLabels[item] ?? item).join(", ")
-        : Object.values(ideationLabels).join(", ")
-      const limit = Number.isFinite(maxIdeas) ? `Generate up to ${maxIdeas} ideas.` : ""
-      const promptText = `Generate ideas for this project across: ${list}. ${limit} Provide concise bullet points.`
-      const cleanup = () => setIdeaBusy(false)
-      return generateInsight(promptText)
-        .then((data) => {
-          const latest = [...data].reverse().find((item) => item.info.role === "assistant")
-          const content = latest
-            ? latest.parts.filter((part) => part.type === "text").map((part) => part.text).join("\n")
-            : ""
-          const entries = parseIdeationText(content, types)
-          const capped = Number.isFinite(maxIdeas) ? entries.slice(0, maxIdeas) : entries
-          return Promise.all(capped.map((entry) => createIdea({ title: entry.title, type: entry.type })))
+      autoSelectModel("ux")
+      const pool = [
+        ...tasks.slice(0, 3).map((task) => `Follow up on ${task.title}`),
+        ...roadmap.features.slice(0, 3).map((feature) => `Unblock ${feature.title}`),
+        "Improve documentation coverage",
+        "Streamline CI for faster feedback",
+        "Add performance monitoring hooks",
+      ]
+      const limit = Number.isFinite(maxIdeas) ? maxIdeas : 8
+      const entries = pool
+        .filter(Boolean)
+        .slice(0, limit)
+        .map((title, index) => {
+          const typeKey = types[index % types.length] || types[0] || "code_improvements"
+          return {
+            id: `idea-${Date.now()}-${index}`,
+            title,
+            type: typeKey,
+            status: "active",
+            impact: "medium",
+          }
         })
-        .finally(cleanup)
+      setIdeas((items) => [...entries, ...items])
+      setIdeaBusy(false)
     },
-    [generateInsight, createIdea],
+    [autoSelectModel, roadmap.features, tasks],
   )
 
-  const createTask = useCallback(async (payload) => {
-    const response = await fetch("/app/kanban", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    })
-    const task = await response.json()
-    setTasks((items) => [task, ...items])
-  }, [])
+  const createTask = useCallback(
+    async (payload) => {
+      const response = await fetch(buildURL("/app/kanban"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      })
+      const task = await response.json()
+      setTasks((items) => [task, ...items])
+    },
+    [buildURL],
+  )
 
-  const removeCompetitor = useCallback(async (competitorID) => {
-    await fetch(`/app/insights/competitors/${competitorID}`, { method: "DELETE" })
-    setCompetitors((items) => items.filter((item) => item.id !== competitorID))
-  }, [])
+  const removeCompetitor = useCallback(
+    async (competitorID) => {
+      await fetch(buildURL(`/app/insights/competitors/${competitorID}`), { method: "DELETE" })
+      setCompetitors((items) => items.filter((item) => item.id !== competitorID))
+    },
+    [buildURL],
+  )
 
   const refreshCompetitors = useCallback(async () => {
-    const response = await fetch("/app/insights/competitors")
+    const response = await fetch(buildURL("/app/insights/competitors"))
     const items = await response.json()
     setCompetitors(items)
-  }, [])
+  }, [buildURL])
 
-  const createCompetitor = useCallback(async (payload) => {
-    const response = await fetch("/app/insights/competitors", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    })
-    const item = await response.json()
-    setCompetitors((items) => [item, ...items])
-  }, [])
+  const createCompetitor = useCallback(
+    async (payload) => {
+      const response = await fetch(buildURL("/app/insights/competitors"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      })
+      const item = await response.json()
+      setCompetitors((items) => [item, ...items])
+    },
+    [buildURL],
+  )
 
-  const addChangelog = useCallback(async (payload) => {
-    const response = await fetch("/app/system/changelog", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    })
-    const item = await response.json()
-    setChangelog((items) => [item, ...items])
-  }, [])
+  const addChangelog = useCallback(
+    async (payload) => {
+      const response = await fetch(buildURL("/app/system/changelog"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      })
+      const item = await response.json()
+      setChangelog((items) => [item, ...items])
+    },
+    [buildURL],
+  )
 
-  const addNotification = useCallback(async (payload) => {
-    const response = await fetch("/app/system/notifications", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    })
-    const item = await response.json()
-    setNotifications((items) => [item, ...items])
-  }, [])
+  const addNotification = useCallback(
+    async (payload) => {
+      const response = await fetch(buildURL("/app/system/notifications"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      })
+      const item = await response.json()
+      setNotifications((items) => [item, ...items])
+    },
+    [buildURL],
+  )
 
-  const dismissNotification = useCallback(async (noteID) => {
-    const response = await fetch(`/app/system/notifications/${noteID}`, { method: "PATCH" })
-    const item = await response.json()
-    setNotifications((items) => items.map((note) => (note.id === item.id ? item : note)))
-  }, [])
+  const dismissNotification = useCallback(
+    async (noteID) => {
+      const response = await fetch(buildURL(`/app/system/notifications/${noteID}`), { method: "PATCH" })
+      const item = await response.json()
+      setNotifications((items) => items.map((note) => (note.id === item.id ? item : note)))
+    },
+    [buildURL],
+  )
 
-  const updateSystemSettings = useCallback(async (payload) => {
-    const response = await fetch("/app/system/settings", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    })
-    const item = await response.json()
-    setSystemSettings(item)
-  }, [])
+  const updateSystemSettings = useCallback(
+    async (payload) => {
+      const response = await fetch(buildURL("/app/system/settings"), {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      })
+      const item = await response.json()
+      setSystemSettings(item)
+    },
+    [buildURL],
+  )
 
-  const updateRateLimit = useCallback(async (payload) => {
-    const response = await fetch("/app/system/limit", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    })
-    const item = await response.json()
-    setRateLimit(item)
-  }, [])
+  const updateRateLimit = useCallback(
+    async (payload) => {
+      const response = await fetch(buildURL("/app/system/limit"), {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      })
+      const item = await response.json()
+      setRateLimit(item)
+    },
+    [buildURL],
+  )
 
-  const addGitHub = useCallback(async (payload) => {
-    const response = await fetch("/app/integrations/github", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    })
-    const item = await response.json()
-    setGithubItems((items) => [item, ...items])
-  }, [])
+  const addGitHub = useCallback(
+    async (payload) => {
+      const response = await fetch(buildURL("/app/integrations/github"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      })
+      const item = await response.json()
+      setGithubItems((items) => [item, ...items])
+    },
+    [buildURL],
+  )
 
-  const removeGitHub = useCallback(async (itemID) => {
-    await fetch(`/app/integrations/github/${itemID}`, { method: "DELETE" })
-    setGithubItems((items) => items.filter((item) => item.id !== itemID))
-  }, [])
+  const removeGitHub = useCallback(
+    async (itemID) => {
+      await fetch(buildURL(`/app/integrations/github/${itemID}`), { method: "DELETE" })
+      setGithubItems((items) => items.filter((item) => item.id !== itemID))
+    },
+    [buildURL],
+  )
 
-  const addGitLab = useCallback(async (payload) => {
-    const response = await fetch("/app/integrations/gitlab", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    })
-    const item = await response.json()
-    setGitlabItems((items) => [item, ...items])
-  }, [])
+  const addGitLab = useCallback(
+    async (payload) => {
+      const response = await fetch(buildURL("/app/integrations/gitlab"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      })
+      const item = await response.json()
+      setGitlabItems((items) => [item, ...items])
+    },
+    [buildURL],
+  )
 
-  const removeGitLab = useCallback(async (itemID) => {
-    await fetch(`/app/integrations/gitlab/${itemID}`, { method: "DELETE" })
-    setGitlabItems((items) => items.filter((item) => item.id !== itemID))
-  }, [])
+  const removeGitLab = useCallback(
+    async (itemID) => {
+      await fetch(buildURL(`/app/integrations/gitlab/${itemID}`), { method: "DELETE" })
+      setGitlabItems((items) => items.filter((item) => item.id !== itemID))
+    },
+    [buildURL],
+  )
 
-  const addLinear = useCallback(async (payload) => {
-    const response = await fetch("/app/integrations/linear", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    })
-    const item = await response.json()
-    setLinearItems((items) => [item, ...items])
-  }, [])
+  const addLinear = useCallback(
+    async (payload) => {
+      const response = await fetch(buildURL("/app/integrations/linear"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      })
+      const item = await response.json()
+      setLinearItems((items) => [item, ...items])
+    },
+    [buildURL],
+  )
 
-  const removeLinear = useCallback(async (itemID) => {
-    await fetch(`/app/integrations/linear/${itemID}`, { method: "DELETE" })
-    setLinearItems((items) => items.filter((item) => item.id !== itemID))
-  }, [])
+  const removeLinear = useCallback(
+    async (itemID) => {
+      await fetch(buildURL(`/app/integrations/linear/${itemID}`), { method: "DELETE" })
+      setLinearItems((items) => items.filter((item) => item.id !== itemID))
+    },
+    [buildURL],
+  )
 
-  const updateIntegrationConfig = useCallback(async (payload) => {
-    const response = await fetch("/app/integrations/config", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    })
-    const item = await response.json()
-    setIntegrationConfig(item)
-  }, [])
+
+  const updateIntegrationConfig = useCallback(
+    async (payload) => {
+      const response = await fetch(buildURL("/app/integrations/config"), {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      })
+      const item = await response.json()
+      setIntegrationConfig(item)
+    },
+    [buildURL],
+  )
 
   const syncGitHub = useCallback(async () => {
-    const response = await fetch("/app/integrations/github/sync", { method: "POST" })
+    const response = await fetch(buildURL("/app/integrations/github/sync"), { method: "POST" })
     const items = await response.json()
     setGithubItems(items)
-  }, [])
+  }, [buildURL])
 
   const syncGitLab = useCallback(async () => {
-    const response = await fetch("/app/integrations/gitlab/sync", { method: "POST" })
+    const response = await fetch(buildURL("/app/integrations/gitlab/sync"), { method: "POST" })
     const items = await response.json()
     setGitlabItems(items)
-  }, [])
+  }, [buildURL])
 
   const syncLinear = useCallback(async () => {
-    const response = await fetch("/app/integrations/linear/sync", { method: "POST" })
+    const response = await fetch(buildURL("/app/integrations/linear/sync"), { method: "POST" })
     const items = await response.json()
     setLinearItems(items)
-  }, [])
+  }, [buildURL])
 
-  const updateTask = useCallback(async (taskID, payload) => {
-    const response = await fetch(`/app/kanban/${taskID}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    })
-    const task = await response.json()
-    setTasks((items) => items.map((item) => (item.id === task.id ? task : item)))
-  }, [])
+  const updateTask = useCallback(
+    async (taskID, payload) => {
+      const response = await fetch(buildURL(`/app/kanban/${taskID}`), {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      })
+      const task = await response.json()
+      setTasks((items) => items.map((item) => (item.id === task.id ? task : item)))
+    },
+    [buildURL],
+  )
 
-  const moveTask = useCallback(async (taskID, status) => {
-    const response = await fetch(`/app/kanban/${taskID}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status }),
-    })
-    const task = await response.json()
-    setTasks((items) => items.map((item) => (item.id === task.id ? task : item)))
-  }, [])
+  const moveTask = useCallback(
+    async (taskID, status) => {
+      const response = await fetch(buildURL(`/app/kanban/${taskID}`), {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      })
+      const task = await response.json()
+      setTasks((items) => items.map((item) => (item.id === task.id ? task : item)))
+    },
+    [buildURL],
+  )
 
-  const toggleFeature = useCallback(async (featureID, status) => {
-    const response = await fetch(`/app/roadmap/${featureID}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status }),
-    })
-    const feature = await response.json()
-    setRoadmap((current) => ({
-      ...current,
-      features: current.features.map((item) => (item.id === feature.id ? feature : item)),
-    }))
-  }, [])
+  const toggleFeature = useCallback(
+    async (featureID, status) => {
+      const response = await fetch(buildURL(`/app/roadmap/${featureID}`), {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      })
+      const feature = await response.json()
+      setRoadmap((current) => ({
+        ...current,
+        features: current.features.map((item) => (item.id === feature.id ? feature : item)),
+      }))
+    },
+    [buildURL],
+  )
 
-  const exportRoadmap = useCallback(async (format) => {
-    const response = await fetch(`/app/roadmap/export?format=${format}`)
-    const content = format === "json" ? JSON.stringify(await response.json(), null, 2) : await response.text()
-    const blob = new Blob([content], { type: "text/plain" })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement("a")
-    link.href = url
-    link.download = `roadmap.${format === "md" ? "md" : format}`
-    link.click()
-    URL.revokeObjectURL(url)
-  }, [])
+  const exportRoadmap = useCallback(
+    async (format) => {
+      const url = new URL(buildURL("/app/roadmap/export"))
+      url.searchParams.set("format", format)
+      const response = await fetch(url.toString())
+      const content = format === "json" ? JSON.stringify(await response.json(), null, 2) : await response.text()
+      const blob = new Blob([content], { type: "text/plain" })
+      const link = document.createElement("a")
+      link.href = URL.createObjectURL(blob)
+      link.download = `roadmap.${format === "md" ? "md" : format}`
+      link.click()
+      URL.revokeObjectURL(link.href)
+    },
+    [buildURL],
+  )
 
-  const updateIdea = useCallback(async (ideaID, status) => {
-    const response = await fetch(`/app/ideation/${ideaID}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status }),
-    })
-    const idea = await response.json()
-    setIdeas((items) => items.map((item) => (item.id === idea.id ? idea : item)))
-  }, [])
+  const updateIdea = useCallback(
+    async (ideaID, status) => {
+      const response = await fetch(buildURL(`/app/ideation/${ideaID}`), {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      })
+      const idea = await response.json()
+      setIdeas((items) => items.map((item) => (item.id === idea.id ? idea : item)))
+    },
+    [buildURL],
+  )
 
-  const convertIdea = useCallback(async (ideaID) => {
-    const response = await fetch(`/app/ideation/${ideaID}/convert`, { method: "POST" })
-    const result = await response.json()
-    setIdeas((items) => items.map((item) => (item.id === result.idea.id ? result.idea : item)))
-    setTasks((items) => [result.task, ...items])
-  }, [])
+  const convertIdea = useCallback(
+    async (ideaID) => {
+      const response = await fetch(buildURL(`/app/ideation/${ideaID}/convert`), { method: "POST" })
+      const result = await response.json()
+      setIdeas((items) => items.map((item) => (item.id === result.idea.id ? result.idea : item)))
+      setTasks((items) => [result.task, ...items])
+    },
+    [buildURL],
+  )
 
-  const addMemory = useCallback(async (payload) => {
-    const response = await fetch("/app/context/memories", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    })
-    const memory = await response.json()
-    setMemories((items) => [memory, ...items])
-  }, [])
+  const addMemory = useCallback(
+    async (payload) => {
+      const response = await fetch(buildURL("/app/context/memories"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      })
+      const memory = await response.json()
+      setMemories((items) => [memory, ...items])
+    },
+    [buildURL],
+  )
 
-  const searchIndex = useCallback(async (query) => {
-    const url = new URL("/app/context/index", window.location.origin)
-    if (query) url.searchParams.set("query", query)
-    const response = await fetch(url.toString())
-    const items = await response.json()
-    setIndexItems(items)
-  }, [])
+  const searchIndex = useCallback(
+    async (query) => {
+      const url = new URL(buildURL("/app/context/index"))
+      if (query) url.searchParams.set("query", query)
+      const response = await fetch(url.toString())
+      const items = await response.json()
+      setIndexItems(items)
+    },
+    [buildURL],
+  )
 
-  const searchMemories = useCallback(async (query) => {
-    const url = new URL("/app/context/memories", window.location.origin)
-    if (query) url.searchParams.set("query", query)
-    const response = await fetch(url.toString())
-    const items = await response.json()
-    setMemories(items)
-  }, [])
+  const searchMemories = useCallback(
+    async (query) => {
+      const url = new URL(buildURL("/app/context/memories"))
+      if (query) url.searchParams.set("query", query)
+      const response = await fetch(url.toString())
+      const items = await response.json()
+      setMemories(items)
+    },
+    [buildURL],
+  )
 
   const openLogs = useCallback(() => setActiveView("insights"), [])
 
@@ -4092,6 +4792,7 @@ function App() {
             files={files}
             filePath={filePath}
             pathInfo={pathInfo}
+            directory={directory}
             onRefreshProjects={refreshProjects}
             onUpdateProject={updateProject}
             onAddProject={addProject}
@@ -4099,6 +4800,7 @@ function App() {
             onCreateWorktree={createWorktree}
             onBrowse={loadFiles}
             onSetPath={setPath}
+            onSelectProject={selectProject}
           />
         )
       case "insights":
@@ -4247,7 +4949,7 @@ function App() {
 
       <TaskWizard open={wizard} onClose={() => setWizard(false)} onSubmit={createTask} />
       <TaskEditDialog task={editing} onClose={() => setEditing(null)} onSave={updateTask} />
-      <FileDrawer task={drawer} onClose={() => setDrawer(null)} />
+      <FileDrawer task={drawer} onClose={() => setDrawer(null)} directory={directory} />
     </div>
   )
 }

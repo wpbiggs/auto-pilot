@@ -1,6 +1,6 @@
-import { realpathSync } from "fs"
+import { realpathSync, existsSync } from "fs"
 import { exists } from "fs/promises"
-import { dirname, join, relative } from "path"
+import { dirname, join, relative, isAbsolute } from "path"
 
 export namespace Filesystem {
   /**
@@ -23,7 +23,36 @@ export namespace Filesystem {
   }
 
   export function contains(parent: string, child: string) {
-    return !relative(parent, child).startsWith("..")
+    try {
+      // Resolve the parent path to its canonical form
+      const realParent = existsSync(parent) ? realpathSync(parent) : parent
+
+      // Resolve the child path to its physical location
+      let realChild = child
+      if (existsSync(child)) {
+        realChild = realpathSync(child)
+      } else {
+        // If child doesn't exist, resolve its closest existing ancestor
+        // to detect if we are traversing out via a symlinked directory.
+        let current = child
+        while (current !== "." && current !== "/") {
+          const dir = dirname(current)
+          if (dir === current) break
+          if (existsSync(dir)) {
+            const realDir = realpathSync(dir)
+            const suffix = relative(dir, child)
+            realChild = join(realDir, suffix)
+            break
+          }
+          current = dir
+        }
+      }
+
+      const rel = relative(realParent, realChild)
+      return !rel.startsWith("..") && !isAbsolute(rel)
+    } catch {
+      return false
+    }
   }
 
   export async function findUp(target: string, start: string, stop?: string) {
