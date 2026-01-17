@@ -143,7 +143,17 @@ const MODEL_TIERS: Record<string, "premium" | "standard" | "fast"> = {
 }
 
 // Model display names
-const MODEL_DISPLAY_NAMES: Record<string, string> = {
+Add real execution setup files and documentation
+
+- Created .env.example with API key templates
+- Created start-real.sh script for easy server startup
+- Updated execution.ts to use correct port (4096)
+- Added setup documentation for real code execution
+
+To enable real execution:
+1. Copy .env.example to .env and add API keys
+2. Run ./start-real.sh to start OpenCode server
+3. Frontend will connect and execute real AI agentsconst MODEL_DISPLAY_NAMES: Record<string, string> = {
   "claude-opus-4-20250514": "Claude Opus 4",
   "claude-sonnet-4-20250514": "Claude Sonnet 4",
   "claude-3-5-haiku-20241022": "Claude Haiku",
@@ -160,10 +170,10 @@ const PROVIDER_NAMES: Record<string, string> = {
 
 /**
  * Get the OpenCode SDK client instance
- * Uses the local OpenCode server running on port 4242 by default
+ * Uses the local OpenCode server running on port 4096 by default
  */
 function getClient(baseUrl?: string) {
-  const url = baseUrl || import.meta.env.VITE_OPENCODE_URL || "http://localhost:4242"
+  const url = baseUrl || import.meta.env.VITE_OPENCODE_URL || "http://localhost:4096"
   return createOpencodeClient({ baseUrl: url })
 }
 
