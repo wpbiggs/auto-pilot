@@ -1,6 +1,5 @@
 import "@/index.css"
-import { ErrorBoundary, Show, lazy, type ParentProps, Suspense } from "solid-js"
-import { Router, Route, Navigate } from "@solidjs/router"
+import { ErrorBoundary, Show, type ParentProps, Suspense } from "solid-js"
 import { MetaProvider } from "@solidjs/meta"
 import { Font } from "@opencode-ai/ui/font"
 import { MarkedProvider } from "@opencode-ai/ui/context/marked"
@@ -15,19 +14,12 @@ import { PermissionProvider } from "@/context/permission"
 import { LayoutProvider } from "@/context/layout"
 import { GlobalSDKProvider } from "@/context/global-sdk"
 import { ServerProvider, useServer } from "@/context/server"
-import { TerminalProvider } from "@/context/terminal"
-import { PromptProvider } from "@/context/prompt"
-import { FileProvider } from "@/context/file"
 import { NotificationProvider } from "@/context/notification"
 import { DialogProvider } from "@opencode-ai/ui/context/dialog"
 import { CommandProvider } from "@/context/command"
-import { Logo } from "@opencode-ai/ui/logo"
-import DirectoryLayout from "@/pages/directory-layout"
 import { ErrorPage } from "./pages/error"
 import { AutoDevFlow } from "@/flows/auto-dev"
 
-// Keep session for existing functionality
-const Session = lazy(() => import("@/pages/session"))
 const Loading = () => <div class="size-full flex items-center justify-center text-text-weak">Loading...</div>
 
 declare global {
@@ -88,36 +80,9 @@ export function AppInterface(props: { defaultUrl?: string }) {
                 <NotificationProvider>
                   <CommandProvider>
                     <WorkflowProvider>
-                      <Router>
-                        {/* Main Auto-Dev Flow - Single Page Application */}
-                        <Route
-                          path="/"
-                          component={() => (
-                            <Suspense fallback={<Loading />}>
-                              <AutoDevFlow />
-                            </Suspense>
-                          )}
-                        />
-                        
-                        {/* Keep session route for direct agent interaction */}
-                        <Route path="/:dir" component={DirectoryLayout}>
-                          <Route path="/" component={() => <Navigate href="/" />} />
-                          <Route
-                            path="/session/:id?"
-                            component={() => (
-                              <TerminalProvider>
-                                <FileProvider>
-                                  <PromptProvider>
-                                    <Suspense fallback={<Loading />}>
-                                      <Session />
-                                    </Suspense>
-                                  </PromptProvider>
-                                </FileProvider>
-                              </TerminalProvider>
-                            )}
-                          />
-                        </Route>
-                      </Router>
+                      <Suspense fallback={<Loading />}>
+                        <AutoDevFlow />
+                      </Suspense>
                     </WorkflowProvider>
                   </CommandProvider>
                 </NotificationProvider>
