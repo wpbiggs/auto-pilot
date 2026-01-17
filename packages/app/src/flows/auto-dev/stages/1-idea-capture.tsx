@@ -1,25 +1,40 @@
 /**
  * Stage 1: Idea Capture
  * Simple, focused input for the user's project idea
+ * Now with codebase integration for existing projects
  */
 
-import { createSignal, Show } from "solid-js"
+import { createSignal, Show, For } from "solid-js"
 import { Button } from "@opencode-ai/ui/button"
 import { Icon } from "@opencode-ai/ui/icon"
+import { CodebaseSelector, type CodebaseContext } from "../components/codebase-selector"
+import type { CodebaseMode } from "../types/codebase"
+
+export interface IdeaCaptureResult {
+  idea: string
+  mode: CodebaseMode
+  codebaseContext?: CodebaseContext
+}
 
 interface IdeaCaptureProps {
-  onSubmit: (idea: string) => void
+  onSubmit: (result: IdeaCaptureResult) => void
 }
 
 export function IdeaCapture(props: IdeaCaptureProps) {
   const [idea, setIdea] = createSignal("")
   const [importing, setImporting] = createSignal(false)
   const [importError, setImportError] = createSignal("")
+  const [mode, setMode] = createSignal<CodebaseMode>("new-project")
+  const [codebaseContext, setCodebaseContext] = createSignal<CodebaseContext | undefined>()
 
   const handleSubmit = () => {
     const ideaText = idea().trim()
     if (ideaText.length > 0) {
-      props.onSubmit(ideaText)
+      props.onSubmit({
+        idea: ideaText,
+        mode: mode(),
+        codebaseContext: codebaseContext()
+      })
     }
   }
 
@@ -78,6 +93,23 @@ export function IdeaCapture(props: IdeaCaptureProps) {
 
   const isValid = () => idea().trim().length > 10
 
+  const handleCodebaseChange = (context: CodebaseContext) => {
+    setCodebaseContext(context)
+    // Auto-switch to appropriate mode when codebase is selected
+    if (context.selectedFiles.length > 0 && mode() === "new-project") {
+      setMode("add-features")
+    }
+  }
+
+  const MODE_OPTIONS: { value: CodebaseMode; label: string; icon: string; description: string }[] = [
+    { value: "new-project", label: "New Project", icon: "✨", description: "Start from scratch" },
+    { value: "add-features", label: "Add Features", icon: "➕", description: "Add to existing code" },
+    { value: "refactor", label: "Refactor", icon: "🔄", description: "Improve existing code" },
+    { value: "fix-bugs", label: "Fix Bugs", icon: "🐛", description: "Fix issues" },
+    { value: "migrate", label: "Migrate", icon: "🚀", description: "Upgrade technology" },
+    { value: "test", label: "Add Tests", icon: "🧪", description: "Improve test coverage" },
+  ]
+
   return (
     <div class="stage-container flex flex-col items-center justify-center min-h-[80vh] p-8">
       <div class="max-w-3xl w-full space-y-8">
@@ -93,6 +125,53 @@ export function IdeaCapture(props: IdeaCaptureProps) {
           </p>
         </div>
 
+        {/* Mode Selector */}
+        <div class="space-y-3">
+          <label class="text-sm font-medium text-text-default">Project Mode</label>
+          <div class="grid grid-cols-3 gap-3">
+            <For each={MODE_OPTIONS}>
+              {(option) => (
+                <button
+                  class={`p-4 rounded-xl border-2 transition-all text-left
+                          ${mode() === option.value 
+                            ? "border-accent-primary bg-accent-primary/10" 
+                            : "border-border-default bg-background-secondary hover:border-accent-primary/50"
+                          }`}
+                  onClick={() => setMode(option.value)}
+                >
+                  <div class="text-2xl mb-2">{option.icon}</div>
+                  <div class="font-medium text-text-default">{option.label}</div>
+                  <div class="text-xs text-text-weak">{option.description}</div>
+                </button>
+              )}
+            </For>
+          </div>
+        </div>
+
+        {/* Codebase Selector (shown for non-new-project modes) */}
+        <Show when={mode() !== "new-project"}>
+          <CodebaseSelector 
+            onSelectionChange={handleCodebaseChange}
+            initialSelection={codebaseContext()?.selectedFiles}
+          />
+        </Show>
+
+        {/* Context Summary (when codebase is selected) */}
+        <Show when={codebaseContext()?.selectedFiles?.length}>
+          <div class="p-4 rounded-xl bg-green-500/10 border border-green-500/30">
+            <div class="flex items-center gap-2 text-green-400 mb-2">
+              <Icon name="circle-check" class="h-5 w-5" />
+              <span class="font-medium">Codebase Context Ready</span>
+            </div>
+            <div class="text-sm text-text-weak">
+              {codebaseContext()?.selectedFiles.length} files/folders selected
+              {codebaseContext()?.detectedTechStack?.length ? (
+                <span> • Tech: {codebaseContext()?.detectedTechStack?.join(", ")}</span>
+              ) : null}
+            </div>
+          </div>
+        </Show>
+
         {/* Main Input */}
         <div class="space-y-4">
           <textarea
@@ -100,10 +179,24 @@ export function IdeaCapture(props: IdeaCaptureProps) {
                    focus:border-accent-primary focus:ring-2 focus:ring-accent-primary/20
                    bg-background-secondary text-text-default placeholder-text-weak
                    resize-none transition-all duration-200"
-            placeholder="e.g., Build a real-time collaborative document editor with authentication, 
-version history, and real-time cursor presence. It should support 
-markdown formatting, code blocks with syntax highlighting, and 
-allow users to share documents via links with different permission levels..."
+            placeholder={mode() === "new-project" 
+              ? `e.g., Build a real-time collaborative document editor with authentication, 
+version history, and real-time cursor presence...`
+              : mode() === "add-features"
+              ? `e.g., Add a user authentication system with OAuth support, 
+password reset functionality, and session management...`
+              : mode() === "refactor"
+              ? `e.g., Refactor the data layer to use a repository pattern,
+improve error handling, and add better TypeScript types...`
+              : mode() === "fix-bugs"
+              ? `e.g., Fix the race condition in the websocket handler,
+the memory leak in the cache system, and the UI flickering on mobile...`
+              : mode() === "migrate"
+              ? `e.g., Migrate from React class components to hooks,
+upgrade to Next.js 14, and switch from REST to GraphQL...`
+              : `e.g., Add unit tests for the auth module,
+integration tests for the API endpoints, and E2E tests for checkout flow...`
+            }
             value={idea()}
             onInput={(e) => setIdea(e.currentTarget.value)}
             onKeyDown={handleKeyDown}
@@ -169,24 +262,45 @@ allow users to share documents via links with different permission levels..."
           <h3 class="font-semibold text-text-default mb-3">
             💡 Tips for better results:
           </h3>
-          <ul class="space-y-2 text-text-weak text-sm">
-            <li class="flex items-start gap-2">
-              <span class="text-accent-primary">•</span>
-              Be specific about features you want (authentication, real-time sync, etc.)
-            </li>
-            <li class="flex items-start gap-2">
-              <span class="text-accent-primary">•</span>
-              Mention technology preferences if any (React, Node.js, PostgreSQL)
-            </li>
-            <li class="flex items-start gap-2">
-              <span class="text-accent-primary">•</span>
-              Describe the user experience you're aiming for
-            </li>
-            <li class="flex items-start gap-2">
-              <span class="text-accent-primary">•</span>
-              Include any constraints (mobile-first, offline support, etc.)
-            </li>
-          </ul>
+          <Show when={mode() === "new-project"} fallback={
+            <ul class="space-y-2 text-text-weak text-sm">
+              <li class="flex items-start gap-2">
+                <span class="text-accent-primary">•</span>
+                Select the files/folders the AI should analyze and modify
+              </li>
+              <li class="flex items-start gap-2">
+                <span class="text-accent-primary">•</span>
+                Be specific about what changes you want and why
+              </li>
+              <li class="flex items-start gap-2">
+                <span class="text-accent-primary">•</span>
+                Mention any patterns or conventions to follow
+              </li>
+              <li class="flex items-start gap-2">
+                <span class="text-accent-primary">•</span>
+                Include any constraints (backwards compatibility, performance, etc.)
+              </li>
+            </ul>
+          }>
+            <ul class="space-y-2 text-text-weak text-sm">
+              <li class="flex items-start gap-2">
+                <span class="text-accent-primary">•</span>
+                Be specific about features you want (authentication, real-time sync, etc.)
+              </li>
+              <li class="flex items-start gap-2">
+                <span class="text-accent-primary">•</span>
+                Mention technology preferences if any (React, Node.js, PostgreSQL)
+              </li>
+              <li class="flex items-start gap-2">
+                <span class="text-accent-primary">•</span>
+                Describe the user experience you're aiming for
+              </li>
+              <li class="flex items-start gap-2">
+                <span class="text-accent-primary">•</span>
+                Include any constraints (mobile-first, offline support, etc.)
+              </li>
+            </ul>
+          </Show>
         </div>
       </div>
     </div>
