@@ -330,6 +330,13 @@ export function LiveExecutionStage({ plan, onComplete, onBack }) {
               ${status.totalCost?.toFixed(2) || "0.00"}
             </div>
           </div>
+          <div className="p-4 rounded-xl bg-gray-900 border border-gray-800">
+            <div className="text-sm text-gray-400">Escalations</div>
+            <div className="text-2xl font-bold text-orange-400">{escalationCount}</div>
+            {escalationCount > 0 && (
+              <div className="text-xs text-orange-400/70 mt-1">Auto-upgraded models</div>
+            )}
+          </div>
         </div>
 
         {/* SDK Connection Status */}
