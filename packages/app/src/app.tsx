@@ -29,6 +29,13 @@ import { Suspense } from "solid-js"
 
 const Home = lazy(() => import("@/pages/home"))
 const Session = lazy(() => import("@/pages/session"))
+const Workspace = lazy(() => import("@/pages/workspace"))
+const Ideation = lazy(() => import("@/pages/ideation"))
+const Roadmap = lazy(() => import("@/pages/roadmap"))
+const Kanban = lazy(() => import("@/pages/kanban"))
+const Agents = lazy(() => import("@/pages/agents"))
+const Insights = lazy(() => import("@/pages/insights"))
+const TaskWizard = lazy(() => import("@/pages/task-wizard"))
 const Loading = () => <div class="size-full flex items-center justify-center text-text-weak">Loading...</div>
 
 declare global {
@@ -69,8 +76,12 @@ export function AppInterface(props: { defaultUrl?: string }) {
   const defaultServerUrl = () => {
     if (props.defaultUrl) return props.defaultUrl
     if (location.hostname.includes("opencode.ai")) return "http://localhost:4096"
-    if (import.meta.env.DEV)
-      return `http://${import.meta.env.VITE_OPENCODE_SERVER_HOST ?? "localhost"}:${import.meta.env.VITE_OPENCODE_SERVER_PORT ?? "4096"}`
+    if (import.meta.env.DEV) {
+      const host = import.meta.env.VITE_OPENCODE_SERVER_HOST ?? "localhost"
+      const port = import.meta.env.VITE_OPENCODE_SERVER_PORT ?? "4096"
+      const protocol = host.includes(".app.github.dev") ? "https" : "http"
+      return `${protocol}://${host}${port !== "443" && port !== "80" ? `:${port}` : ""}`
+    }
 
     return window.location.origin
   }
@@ -102,7 +113,15 @@ export function AppInterface(props: { defaultUrl?: string }) {
                 )}
               />
               <Route path="/:dir" component={DirectoryLayout}>
-                <Route path="/" component={() => <Navigate href="session" />} />
+                <Route path="/" component={() => <Navigate href="workspace" />} />
+                <Route
+                  path="/workspace"
+                  component={() => (
+                    <Suspense fallback={<Loading />}>
+                      <Workspace />
+                    </Suspense>
+                  )}
+                />
                 <Route
                   path="/session/:id?"
                   component={() => (
@@ -115,6 +134,54 @@ export function AppInterface(props: { defaultUrl?: string }) {
                         </PromptProvider>
                       </FileProvider>
                     </TerminalProvider>
+                  )}
+                />
+                <Route
+                  path="/ideation"
+                  component={() => (
+                    <Suspense fallback={<Loading />}>
+                      <Ideation />
+                    </Suspense>
+                  )}
+                />
+                <Route
+                  path="/roadmap"
+                  component={() => (
+                    <Suspense fallback={<Loading />}>
+                      <Roadmap />
+                    </Suspense>
+                  )}
+                />
+                <Route
+                  path="/kanban"
+                  component={() => (
+                    <Suspense fallback={<Loading />}>
+                      <Kanban />
+                    </Suspense>
+                  )}
+                />
+                <Route
+                  path="/agents"
+                  component={() => (
+                    <Suspense fallback={<Loading />}>
+                      <Agents />
+                    </Suspense>
+                  )}
+                />
+                <Route
+                  path="/insights"
+                  component={() => (
+                    <Suspense fallback={<Loading />}>
+                      <Insights />
+                    </Suspense>
+                  )}
+                />
+                <Route
+                  path="/task-wizard"
+                  component={() => (
+                    <Suspense fallback={<Loading />}>
+                      <TaskWizard />
+                    </Suspense>
                   )}
                 />
               </Route>
