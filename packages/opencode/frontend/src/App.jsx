@@ -2332,6 +2332,7 @@ function Insights({
   messages,
   prompt,
   sending,
+  sendError,
   models,
   agents,
   selectedAgent,
@@ -4479,7 +4480,7 @@ function App() {
       const statusRes = await fetch(buildURL("/session/status"))
       const providerRes = await fetch(buildURL("/provider"))
       const competitorRes = await fetch(buildURL("/app/insights/competitors"))
-      const projectRes = await fetch("/project")
+      const projectRes = await fetch(buildURL("/project"))
       const currentRes = await fetch(buildURL("/project/current"))
       const worktreeRes = await fetch(buildURL("/experimental/worktree"))
       const pathRes = await fetch(buildURL("/path"))
@@ -5472,6 +5473,7 @@ function App() {
             messages={messages}
             prompt={prompt}
             sending={sending}
+            sendError={sendError}
             models={selectableModels}
             agents={agents}
             selectedAgent={agentChoice}
