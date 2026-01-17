@@ -1,5 +1,5 @@
 import "@/index.css"
-import { ErrorBoundary, Show, lazy, type ParentProps } from "solid-js"
+import { ErrorBoundary, Show, lazy, type ParentProps, Suspense } from "solid-js"
 import { Router, Route, Navigate } from "@solidjs/router"
 import { MetaProvider } from "@solidjs/meta"
 import { Font } from "@opencode-ai/ui/font"
@@ -22,23 +22,12 @@ import { NotificationProvider } from "@/context/notification"
 import { DialogProvider } from "@opencode-ai/ui/context/dialog"
 import { CommandProvider } from "@/context/command"
 import { Logo } from "@opencode-ai/ui/logo"
-import Layout from "@/pages/layout"
 import DirectoryLayout from "@/pages/directory-layout"
 import { ErrorPage } from "./pages/error"
-import { iife } from "@opencode-ai/util/iife"
-import { Suspense } from "solid-js"
+import { AutoDevFlow } from "@/flows/auto-dev"
 
-const Home = lazy(() => import("@/pages/home"))
+// Keep session for existing functionality
 const Session = lazy(() => import("@/pages/session"))
-const Workspace = lazy(() => import("@/pages/workspace"))
-const Ideation = lazy(() => import("@/pages/ideation"))
-const Roadmap = lazy(() => import("@/pages/roadmap"))
-const Kanban = lazy(() => import("@/pages/kanban"))
-const Agents = lazy(() => import("@/pages/agents"))
-const Insights = lazy(() => import("@/pages/insights"))
-const TaskWizard = lazy(() => import("@/pages/task-wizard"))
-const AgentMarketplace = lazy(() => import("@/pages/agent-marketplace"))
-const Analytics = lazy(() => import("@/pages/analytics"))
 const Loading = () => <div class="size-full flex items-center justify-center text-text-weak">Loading...</div>
 
 declare global {
@@ -94,119 +83,46 @@ export function AppInterface(props: { defaultUrl?: string }) {
       <ServerKey>
         <GlobalSDKProvider>
           <GlobalSyncProvider>
-            <Router
-              root={(props) => (
-                <PermissionProvider>
-                  <LayoutProvider>
-                    <NotificationProvider>
-                      <CommandProvider>
-                        <WorkflowProvider>
-                          <Layout>{props.children}</Layout>
-                        </WorkflowProvider>
-                      </CommandProvider>
-                    </NotificationProvider>
-                  </LayoutProvider>
-                </PermissionProvider>
-              )}
-            >
-              <Route
-                path="/"
-                component={() => (
-                  <Suspense fallback={<Loading />}>
-                    <Home />
-                  </Suspense>
-                )}
-              />
-              <Route path="/:dir" component={DirectoryLayout}>
-                <Route path="/" component={() => <Navigate href="workspace" />} />
-                <Route
-                  path="/workspace"
-                  component={() => (
-                    <Suspense fallback={<Loading />}>
-                      <Workspace />
-                    </Suspense>
-                  )}
-                />
-                <Route
-                  path="/session/:id?"
-                  component={() => (
-                    <TerminalProvider>
-                      <FileProvider>
-                        <PromptProvider>
-                          <Suspense fallback={<Loading />}>
-                            <Session />
-                          </Suspense>
-                        </PromptProvider>
-                      </FileProvider>
-                    </TerminalProvider>
-                  )}
-                />
-                <Route
-                  path="/ideation"
-                  component={() => (
-                    <Suspense fallback={<Loading />}>
-                      <Ideation />
-                    </Suspense>
-                  )}
-                />
-                <Route
-                  path="/roadmap"
-                  component={() => (
-                    <Suspense fallback={<Loading />}>
-                      <Roadmap />
-                    </Suspense>
-                  )}
-                />
-                <Route
-                  path="/kanban"
-                  component={() => (
-                    <Suspense fallback={<Loading />}>
-                      <Kanban />
-                    </Suspense>
-                  )}
-                />
-                <Route
-                  path="/agents"
-                  component={() => (
-                    <Suspense fallback={<Loading />}>
-                      <Agents />
-                    </Suspense>
-                  )}
-                />
-                <Route
-                  path="/insights"
-                  component={() => (
-                    <Suspense fallback={<Loading />}>
-                      <Insights />
-                    </Suspense>
-                  )}
-                />
-                <Route
-                  path="/task-wizard"
-                  component={() => (
-                    <Suspense fallback={<Loading />}>
-                      <TaskWizard />
-                    </Suspense>
-                  )}
-                />
-                <Route
-                  path="/agent-marketplace"
-                  component={() => (
-                    <Suspense fallback={<Loading />}>
-                      <AgentMarketplace />
-                    </Suspense>
-                  )}
-                />
-                <Route
-                  path="/analytics"
-                  component={() => (
-                    <Suspense fallback={<Loading />}>
-                      <Analytics />
-                    </Suspense>
-                  )}
-                />
-              </Route>
-            </Router>
+            <PermissionProvider>
+              <LayoutProvider>
+                <NotificationProvider>
+                  <CommandProvider>
+                    <WorkflowProvider>
+                      <Router>
+                        {/* Main Auto-Dev Flow - Single Page Application */}
+                        <Route
+                          path="/"
+                          component={() => (
+                            <Suspense fallback={<Loading />}>
+                              <AutoDevFlow />
+                            </Suspense>
+                          )}
+                        />
+                        
+                        {/* Keep session route for direct agent interaction */}
+                        <Route path="/:dir" component={DirectoryLayout}>
+                          <Route path="/" component={() => <Navigate href="/" />} />
+                          <Route
+                            path="/session/:id?"
+                            component={() => (
+                              <TerminalProvider>
+                                <FileProvider>
+                                  <PromptProvider>
+                                    <Suspense fallback={<Loading />}>
+                                      <Session />
+                                    </Suspense>
+                                  </PromptProvider>
+                                </FileProvider>
+                              </TerminalProvider>
+                            )}
+                          />
+                        </Route>
+                      </Router>
+                    </WorkflowProvider>
+                  </CommandProvider>
+                </NotificationProvider>
+              </LayoutProvider>
+            </PermissionProvider>
           </GlobalSyncProvider>
         </GlobalSDKProvider>
       </ServerKey>
