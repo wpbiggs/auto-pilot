@@ -3,7 +3,9 @@
  * Manages task execution using OpenCode SDK sessions and prompts
  */
 
-import { createOpencodeClient } from "@opencode-ai/sdk/client"
+// Import from the monorepo SDK package via Vite alias
+// @ts-ignore - Vite alias resolves this at build time
+import { createOpencodeClient } from "@opencode-sdk/client"
 
 // Types for execution
 export interface TaskConfig {
@@ -186,16 +188,17 @@ export async function fetchAvailableModels(baseUrl?: string): Promise<AvailableM
       const isConnected = connectedSet.has(provider.id)
       
       for (const [modelId, modelInfo] of Object.entries(provider.models)) {
+        const info = modelInfo as { name?: string; experimental?: boolean; cost?: { input: number; output: number } }
         models.push({
           id: modelId,
-          name: MODEL_DISPLAY_NAMES[modelId] || modelInfo.name || modelId,
+          name: MODEL_DISPLAY_NAMES[modelId] || info.name || modelId,
           providerId: provider.id,
           providerName: PROVIDER_NAMES[provider.id] || provider.name,
           tier: MODEL_TIERS[modelId] || "standard",
-          available: isConnected && !modelInfo.experimental,
-          cost: modelInfo.cost ? {
-            input: modelInfo.cost.input,
-            output: modelInfo.cost.output,
+          available: isConnected && !info.experimental,
+          cost: info.cost ? {
+            input: info.cost.input,
+            output: info.cost.output,
           } : undefined,
         })
       }
