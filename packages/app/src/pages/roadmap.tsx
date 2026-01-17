@@ -1,10 +1,11 @@
-import { createSignal, createMemo, For, Show } from "solid-js"
+import { createSignal, createMemo, createEffect, For, Show } from "solid-js"
 import { useParams, useNavigate, useSearchParams } from "@solidjs/router"
 import { Button } from "@opencode-ai/ui/button"
 import { Card } from "@opencode-ai/ui/card"
 import { Icon } from "@opencode-ai/ui/icon"
 import { Spinner } from "@opencode-ai/ui/spinner"
 import { base64Decode } from "@opencode-ai/util/encode"
+import { useWorkflow } from "@/context/workflow"
 
 interface RoadmapItem {
   id: string
@@ -31,6 +32,7 @@ export default function RoadmapPage() {
   const params = useParams()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
+  const [workflowStore, workflowActions] = useWorkflow()
   
   const directory = createMemo(() => params.dir ? base64Decode(params.dir) : "")
   
@@ -38,6 +40,7 @@ export default function RoadmapPage() {
   const [isGenerating, setIsGenerating] = createSignal(false)
   const [newItemTitle, setNewItemTitle] = createSignal("")
   const [selectedPhase, setSelectedPhase] = createSignal<string>("foundation")
+  const [importedIdeas, setImportedIdeas] = createSignal(false)
   
   const [phases, setPhases] = createSignal<Phase[]>([
     {
@@ -155,6 +158,40 @@ export default function RoadmapPage() {
     },
   ])
 
+  // Import ideas from workflow when coming from ideation page
+  createEffect(() => {
+    if (searchParams.fromIdeation && !importedIdeas() && workflowStore.acceptedIdeas.length > 0) {
+      // Convert accepted ideas to roadmap items
+      const newItems = workflowActions.convertIdeasToRoadmap()
+      
+      // Add the new items to the local phases
+      setPhases(prev => {
+        const updated = prev.map(phase => {
+          const phaseItems = newItems.filter(item => item.phase === phase.id)
+          if (phaseItems.length > 0) {
+            const localItems: RoadmapItem[] = phaseItems.map(item => ({
+              id: item.id,
+              title: item.title,
+              description: item.description,
+              phase: item.phase,
+              status: item.status,
+              priority: item.priority,
+              estimatedDays: item.estimatedDays,
+              dependencies: item.dependencies,
+              tasks: item.tasks,
+              assignedAgent: item.assignedAgent,
+            }))
+            return { ...phase, items: [...phase.items, ...localItems] }
+          }
+          return phase
+        })
+        return updated
+      })
+      
+      setImportedIdeas(true)
+    }
+  })
+
   const allItems = createMemo(() => phases().flatMap(p => p.items))
   
   const totalDays = createMemo(() => allItems().reduce((sum, item) => sum + item.estimatedDays, 0))
@@ -199,6 +236,23 @@ export default function RoadmapPage() {
       alert("No items to populate. Add roadmap items first.")
       return
     }
+    
+    // Add planned items to workflow store for kanban to consume
+    for (const item of plannedItems) {
+      workflowActions.addRoadmapItem({
+        id: item.id,
+        title: item.title,
+        description: item.description,
+        phase: item.phase,
+        status: item.status,
+        priority: item.priority,
+        estimatedDays: item.estimatedDays,
+        dependencies: item.dependencies,
+        tasks: item.tasks,
+        assignedAgent: item.assignedAgent,
+      })
+    }
+    
     navigate(`/${params.dir}/kanban?fromRoadmap=true`)
   }
 
