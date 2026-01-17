@@ -117,7 +117,7 @@ export function AutoDevFlow() {
 
       {/* Main Content - with top padding for fixed header */}
       <div className="pt-20">
-        {stage === 1 && <IdeaCapture onSubmit={handleIdeaSubmit} />}
+        {stage === 1 && <IdeaCapture onSubmit={handleIdeaSubmit} initialIdea={idea} />}
 
         {stage === 2 && (
           <AIPlanningStage

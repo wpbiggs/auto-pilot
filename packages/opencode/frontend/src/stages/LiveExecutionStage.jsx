@@ -1,96 +1,18 @@
 /**
  * Stage 3: Live Execution Dashboard
- * Real-time monitoring of parallel task execution
+ * Real-time monitoring of parallel task execution with OpenCode SDK
  */
 
 import { useState, useEffect, useCallback } from "react"
-
-// Mock execution service
-function createExecutionSimulator(plan, onUpdate) {
-  let running = true
-  let paused = false
-  const taskStates = new Map()
-  
-  // Initialize all tasks as queued
-  plan.tasks.forEach(task => {
-    taskStates.set(task.id, { status: "queued", progress: 0 })
-  })
-
-  const getStatus = () => {
-    const completed = [...taskStates.values()].filter(t => t.status === "completed").length
-    const failed = [...taskStates.values()].filter(t => t.status === "failed").length
-    const running = [...taskStates.values()].filter(t => t.status === "running").length
-    const queued = [...taskStates.values()].filter(t => t.status === "queued").length
-
-    return {
-      totalTasks: plan.tasks.length,
-      completedTasks: completed,
-      failedTasks: failed,
-      runningTasks: running,
-      queuedTasks: queued,
-      progressPercentage: Math.round((completed / plan.tasks.length) * 100),
-      isComplete: completed + failed === plan.tasks.length,
-      tasks: plan.tasks.map(t => ({
-        ...t,
-        ...taskStates.get(t.id)
-      }))
-    }
-  }
-
-  const simulate = async () => {
-    for (const task of plan.tasks) {
-      if (!running) break
-      
-      while (paused) {
-        await new Promise(r => setTimeout(r, 100))
-        if (!running) break
-      }
-      
-      // Start task
-      taskStates.set(task.id, { status: "running", progress: 0 })
-      onUpdate(getStatus(), { type: "task_started", taskId: task.id })
-
-      // Simulate progress
-      for (let progress = 0; progress <= 100; progress += 10) {
-        if (!running) break
-        while (paused) {
-          await new Promise(r => setTimeout(r, 100))
-          if (!running) break
-        }
-        
-        taskStates.set(task.id, { status: "running", progress })
-        onUpdate(getStatus(), null)
-        await new Promise(r => setTimeout(r, 200))
-      }
-
-      // Complete task (90% success rate for demo)
-      const success = Math.random() > 0.1
-      taskStates.set(task.id, { 
-        status: success ? "completed" : "failed", 
-        progress: 100 
-      })
-      onUpdate(getStatus(), { 
-        type: success ? "task_completed" : "task_failed", 
-        taskId: task.id 
-      })
-    }
-
-    onUpdate(getStatus(), { type: "execution_completed" })
-  }
-
-  // Start simulation
-  simulate()
-
-  return {
-    pause: () => { paused = true },
-    resume: () => { paused = false },
-    cancel: () => { running = false },
-    isPaused: () => paused,
-    getStatus
-  }
-}
+import { 
+  createExecutionService, 
+  createMockExecutionService, 
+  checkSDKConnection 
+} from "../services/execution"
 
 function TaskCard({ task }) {
+  const [showOutput, setShowOutput] = useState(false)
+  
   const getStatusColor = (status) => {
     switch (status) {
       case "completed": return "border-green-500 bg-green-500/10"
@@ -123,7 +45,17 @@ function TaskCard({ task }) {
           </span>
           <span className="font-medium text-white">{task.name}</span>
         </div>
-        <span className="text-sm text-gray-400 font-mono">{task.model}</span>
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-gray-400 font-mono">{task.model}</span>
+          {(task.output || task.error) && (
+            <button
+              onClick={() => setShowOutput(!showOutput)}
+              className="text-xs px-2 py-1 rounded bg-gray-700 text-gray-300 hover:bg-gray-600"
+            >
+              {showOutput ? "Hide" : "Show"} Output
+            </button>
+          )}
+        </div>
       </div>
       
       {task.status === "running" && (
@@ -135,6 +67,26 @@ function TaskCard({ task }) {
             />
           </div>
           <div className="text-xs text-gray-500 mt-1">{task.progress}%</div>
+        </div>
+      )}
+
+      {task.status === "completed" && task.tokensUsed && (
+        <div className="mt-2 flex gap-4 text-xs text-gray-500">
+          <span>Tokens: {task.tokensUsed?.toLocaleString()}</span>
+          <span>Cost: ${task.cost?.toFixed(4)}</span>
+          <span>Duration: {Math.round((task.duration || 0) / 1000)}s</span>
+        </div>
+      )}
+
+      {task.status === "failed" && task.error && (
+        <div className="mt-2 text-sm text-red-400 bg-red-500/10 p-2 rounded">
+          {task.error}
+        </div>
+      )}
+
+      {showOutput && task.output && (
+        <div className="mt-2 text-sm text-gray-300 bg-gray-800 p-3 rounded font-mono text-xs max-h-40 overflow-y-auto whitespace-pre-wrap">
+          {task.output}
         </div>
       )}
     </div>
@@ -164,9 +116,9 @@ function LogEntry({ log }) {
 
   return (
     <div className={`flex items-start gap-2 text-sm font-mono ${getLogColor(log.type)}`}>
-      <span className="text-gray-600">[{time}]</span>
-      <span>{getLogIcon(log.type)}</span>
-      <span>{log.message}</span>
+      <span className="text-gray-600 flex-shrink-0">[{time}]</span>
+      <span className="flex-shrink-0">{getLogIcon(log.type)}</span>
+      <span className="break-all">{log.message}</span>
     </div>
   )
 }
@@ -180,11 +132,16 @@ export function LiveExecutionStage({ plan, onComplete, onBack }) {
     queuedTasks: plan.tasks.length,
     progressPercentage: 0,
     isComplete: false,
-    tasks: plan.tasks.map(t => ({ ...t, status: "queued", progress: 0 }))
+    tasks: plan.tasks.map(t => ({ ...t, status: "queued", progress: 0 })),
+    totalTokensUsed: 0,
+    totalCost: 0,
+    totalDuration: 0,
   })
   const [logs, setLogs] = useState([])
   const [isPaused, setIsPaused] = useState(false)
   const [executor, setExecutor] = useState(null)
+  const [sdkConnected, setSdkConnected] = useState(null) // null = checking, true/false = result
+  const [escalationCount, setEscalationCount] = useState(0)
 
   const addLog = useCallback((type, message) => {
     setLogs(prev => [...prev, {
@@ -192,39 +149,83 @@ export function LiveExecutionStage({ plan, onComplete, onBack }) {
       timestamp: Date.now(),
       type,
       message
-    }])
+    }].slice(-100)) // Keep last 100 logs
   }, [])
 
-  useEffect(() => {
-    addLog("info", "Starting execution...")
+  // Escalation webhook handler
+  const handleEscalation = useCallback((event) => {
+    switch (event.type) {
+      case "escalation_started":
+        setEscalationCount(prev => prev + 1)
+        addLog("warning", `⬆️ Escalating "${event.taskName}" from ${event.originalModel} to ${event.escalatedModel} (Level ${event.escalationLevel}/${event.maxEscalations})`)
+        break
+      case "escalation_completed":
+        addLog("success", `✅ Escalation succeeded for "${event.taskName}" with ${event.escalatedModel}`)
+        break
+      case "escalation_failed":
+        addLog("error", `❌ Escalation exhausted for "${event.taskName}" - All models failed after ${event.escalationLevel} attempts`)
+        break
+      case "task_failed":
+        // This is the initial failure before escalation
+        break
+    }
+  }, [addLog])
 
-    const exec = createExecutionSimulator(plan, (newStatus, event) => {
-      setStatus(newStatus)
+  useEffect(() => {
+    // Check SDK connection and start execution
+    const startExecution = async () => {
+      addLog("info", "Checking OpenCode SDK connection...")
       
-      if (event) {
-        switch (event.type) {
-          case "task_started":
-            addLog("info", `Started: ${event.taskId}`)
-            break
-          case "task_completed":
-            addLog("success", `Completed: ${event.taskId}`)
-            break
-          case "task_failed":
-            addLog("error", `Failed: ${event.taskId}`)
-            break
-          case "execution_completed":
-            addLog("success", "All tasks completed!")
-            break
+      const isConnected = await checkSDKConnection()
+      setSdkConnected(isConnected)
+      
+      if (isConnected) {
+        addLog("success", "Connected to OpenCode SDK - using real AI agents")
+        addLog("info", "🛡️ Failure escalation enabled - tasks will auto-escalate to stronger models on failure")
+      } else {
+        addLog("warning", "SDK not available - running in demo mode")
+      }
+
+      // Create appropriate executor
+      const handleUpdate = (newStatus, event) => {
+        setStatus(newStatus)
+        
+        if (event) {
+          if (event.type === "log" && event.logType && event.message) {
+            addLog(event.logType, event.message)
+          } else if (event.type === "task_started") {
+            // Log already added by execution service
+          } else if (event.type === "task_completed") {
+            // Log already added by execution service
+          } else if (event.type === "task_failed") {
+            // Log already added by execution service
+          } else if (event.type === "execution_completed") {
+            // Log already added by execution service
+          }
         }
       }
-    })
 
-    setExecutor(exec)
+      const exec = isConnected
+        ? createExecutionService(plan, handleUpdate, {
+            // Escalation configuration
+            escalation: {
+              enabled: true,
+              maxEscalations: 2,
+              includeFailedOutputInEscalation: true,
+            },
+            onEscalation: handleEscalation,
+          })
+        : createMockExecutionService(plan, handleUpdate)
+      
+      setExecutor(exec)
+    }
+
+    startExecution()
 
     return () => {
-      exec.cancel()
+      // Cleanup on unmount
     }
-  }, [plan, addLog])
+  }, [plan, addLog, handleEscalation])
 
   const handlePause = () => {
     if (!executor) return
@@ -243,7 +244,7 @@ export function LiveExecutionStage({ plan, onComplete, onBack }) {
   const handleCancel = () => {
     if (window.confirm("Are you sure you want to cancel execution?")) {
       executor?.cancel()
-      addLog("warning", "Execution cancelled")
+      addLog("warning", "Execution cancelled by user")
     }
   }
 
@@ -298,7 +299,7 @@ export function LiveExecutionStage({ plan, onComplete, onBack }) {
         </div>
 
         {/* Progress Overview */}
-        <div className="grid grid-cols-5 gap-4">
+        <div className="grid grid-cols-6 gap-4">
           <div className="p-4 rounded-xl bg-gray-900 border border-gray-800 col-span-2">
             <div className="text-sm text-gray-400 mb-2">Overall Progress</div>
             <div className="text-3xl font-bold text-white mb-2">
@@ -323,7 +324,30 @@ export function LiveExecutionStage({ plan, onComplete, onBack }) {
             <div className="text-sm text-gray-400">Failed</div>
             <div className="text-2xl font-bold text-red-400">{status.failedTasks}</div>
           </div>
+          <div className="p-4 rounded-xl bg-gray-900 border border-gray-800">
+            <div className="text-sm text-gray-400">Total Cost</div>
+            <div className="text-2xl font-bold text-green-400">
+              ${status.totalCost?.toFixed(2) || "0.00"}
+            </div>
+          </div>
         </div>
+
+        {/* SDK Connection Status */}
+        {sdkConnected !== null && (
+          <div className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm ${
+            sdkConnected 
+              ? "bg-green-500/10 border border-green-500/30 text-green-400"
+              : "bg-yellow-500/10 border border-yellow-500/30 text-yellow-400"
+          }`}>
+            <span>{sdkConnected ? "🟢" : "🟡"}</span>
+            <span>
+              {sdkConnected 
+                ? "Connected to OpenCode SDK - Real AI agents are executing tasks"
+                : "Demo Mode - SDK not connected, using simulated execution"
+              }
+            </span>
+          </div>
+        )}
 
         {/* Main Content Grid */}
         <div className="grid grid-cols-2 gap-6">

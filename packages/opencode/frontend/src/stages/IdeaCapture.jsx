@@ -5,8 +5,8 @@
 
 import { useState } from "react"
 
-export function IdeaCapture({ onSubmit }) {
-  const [idea, setIdea] = useState("")
+export function IdeaCapture({ onSubmit, initialIdea = "" }) {
+  const [idea, setIdea] = useState(initialIdea)
   const [importing, setImporting] = useState(false)
   const [importError, setImportError] = useState("")
 

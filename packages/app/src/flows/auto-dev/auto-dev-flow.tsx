@@ -1,23 +1,29 @@
 /**
  * Auto Dev Flow - Main Orchestrator
  * Single-flow application: Idea → AI Planning → Auto-Execution
+ * Now with codebase integration for existing projects
  */
 
 import { createSignal, Show } from "solid-js"
-import type { ExecutionPlan } from "@/types/execution-plan"
-import { IdeaCapture } from "./stages/1-idea-capture"
+import type { ExecutionPlan, CodebaseMode } from "@/types/execution-plan"
+import { IdeaCapture, type IdeaCaptureResult } from "./stages/1-idea-capture"
 import { AIPlanningStage } from "./stages/2-ai-planning"
 import { LiveExecutionStage } from "./stages/3-live-execution"
+import type { CodebaseContext } from "./components/codebase-selector"
 
 type FlowStage = 1 | 2 | 3
 
 export function AutoDevFlow() {
   const [stage, setStage] = createSignal<FlowStage>(1)
   const [idea, setIdea] = createSignal("")
+  const [mode, setMode] = createSignal<CodebaseMode>("new-project")
+  const [codebaseContext, setCodebaseContext] = createSignal<CodebaseContext | undefined>()
   const [plan, setPlan] = createSignal<ExecutionPlan | null>(null)
 
-  const handleIdeaSubmit = (ideaText: string) => {
-    setIdea(ideaText)
+  const handleIdeaSubmit = (result: IdeaCaptureResult) => {
+    setIdea(result.idea)
+    setMode(result.mode)
+    setCodebaseContext(result.codebaseContext)
     setStage(2)
   }
 
@@ -38,7 +44,18 @@ export function AutoDevFlow() {
     // Reset flow for a new project
     setStage(1)
     setIdea("")
+    setMode("new-project")
+    setCodebaseContext(undefined)
     setPlan(null)
+  }
+
+  // Get stage label based on mode
+  const getStageLabel = (stageNum: number) => {
+    if (stageNum === 1) return "Idea"
+    if (stageNum === 2) {
+      return mode() === "new-project" ? "Planning" : "Analysis"
+    }
+    return "Execution"
   }
 
   return (
@@ -64,7 +81,7 @@ export function AutoDevFlow() {
               <StageConnector active={stage() > 1} />
               <StageIndicator 
                 number={2} 
-                label="Planning" 
+                label={getStageLabel(2)} 
                 active={stage() === 2} 
                 completed={stage() > 2} 
               />
@@ -77,8 +94,15 @@ export function AutoDevFlow() {
               />
             </div>
 
-            {/* Spacer */}
-            <div class="w-32" />
+            {/* Mode Badge */}
+            <Show when={mode() !== "new-project" && stage() > 1}>
+              <div class="px-3 py-1 rounded-full text-xs bg-blue-500/20 text-blue-400">
+                {mode().replace("-", " ")}
+              </div>
+            </Show>
+            <Show when={mode() === "new-project" || stage() === 1}>
+              <div class="w-32" />
+            </Show>
           </div>
         </div>
       </div>
@@ -92,6 +116,8 @@ export function AutoDevFlow() {
         <Show when={stage() === 2}>
           <AIPlanningStage 
             idea={idea()} 
+            mode={mode()}
+            codebaseContext={codebaseContext()}
             onApprove={handlePlanApprove}
             onBack={handleBack}
           />
