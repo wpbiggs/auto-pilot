@@ -6,6 +6,7 @@ import { Icon } from "@opencode-ai/ui/icon"
 import { Spinner } from "@opencode-ai/ui/spinner"
 import { TextField } from "@opencode-ai/ui/text-field"
 import { useGlobalSync } from "@/context/global-sync"
+import { useWorkflow, type WorkflowIdea } from "@/context/workflow"
 import { base64Decode } from "@opencode-ai/util/encode"
 
 interface Suggestion {
@@ -37,6 +38,7 @@ export default function IdeationPage() {
   const params = useParams()
   const navigate = useNavigate()
   const globalSync = useGlobalSync()
+  const [workflowStore, workflowActions] = useWorkflow()
   
   const directory = createMemo(() => params.dir ? base64Decode(params.dir) : "")
   
@@ -197,8 +199,27 @@ export default function IdeationPage() {
       return
     }
     
-    // Navigate to roadmap with the accepted ideas
-    navigate(`/${params.dir}/roadmap?fromIdeation=${session.id}`)
+    // Add accepted ideas to workflow store
+    for (const idea of acceptedIdeas) {
+      const workflowIdea: WorkflowIdea = {
+        id: idea.id,
+        type: idea.type,
+        title: idea.title,
+        description: idea.description,
+        priority: idea.priority,
+        impact: idea.impact,
+        effort: idea.effort,
+        source: idea.source,
+        status: idea.status,
+        tags: idea.tags,
+        createdAt: idea.createdAt.getTime(),
+        aiConfidence: idea.aiConfidence,
+      }
+      workflowActions.addAcceptedIdea(workflowIdea)
+    }
+    
+    // Navigate to roadmap - the workflow context will have the ideas
+    navigate(`/${params.dir}/roadmap?fromIdeation=true`)
   }
 
   const getPriorityColor = (priority: Suggestion["priority"]) => {

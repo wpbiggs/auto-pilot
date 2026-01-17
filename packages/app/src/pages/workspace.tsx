@@ -1,4 +1,4 @@
-import { createSignal, createMemo, For, Show, onMount } from "solid-js"
+import { createSignal, createMemo, For, Show, onMount, onCleanup } from "solid-js"
 import { A, useNavigate, useParams } from "@solidjs/router"
 import { Button } from "@opencode-ai/ui/button"
 import { Card } from "@opencode-ai/ui/card"
@@ -7,6 +7,7 @@ import { Spinner } from "@opencode-ai/ui/spinner"
 import { useGlobalSync } from "@/context/global-sync"
 import { useLayout } from "@/context/layout"
 import { base64Decode } from "@opencode-ai/util/encode"
+import { ActiveAgentsPanel } from "@/components/active-agents-panel"
 
 interface QuickAction {
   id: string
@@ -46,19 +47,43 @@ export default function WorkspacePage() {
   
   const directory = createMemo(() => params.dir ? base64Decode(params.dir) : "")
   
-  const [executionPulse, setExecutionPulse] = createSignal<ExecutionPulse>({
-    tasksCompleted: 12,
-    ideasInPipeline: 8,
-    roadmapProgress: 35,
-    activeAgents: 3,
-    estimatedCompletion: "2 hours",
+  // Get real SDK data from globalSync
+  const [store] = createMemo(() => {
+    const dir = directory()
+    if (!dir) return [{ agent: [], session: [], session_status: {} }]
+    return globalSync.child(dir)
+  })()
+  
+  // Derive session activity from real data
+  const sessionActivity = createMemo(() => {
+    const sessions = store.session || []
+    const statuses = (store.session_status || {}) as Record<string, { type: string }>
+    
+    let busy = 0, idle = 0, retrying = 0, completed = 0
+    
+    for (const session of sessions) {
+      const status = statuses[session.id]
+      if (!status) {
+        idle++
+        continue
+      }
+      switch (status.type) {
+        case "busy": busy++; break
+        case "idle": idle++; break
+        case "retry": retrying++; break
+        default: completed++
+      }
+    }
+    
+    return { busy, idle, retrying, completed }
   })
   
-  const [sessionActivity, setSessionActivity] = createSignal<SessionActivity>({
-    busy: 3,
-    idle: 2,
-    retrying: 0,
-    completed: 7,
+  const [executionPulse, setExecutionPulse] = createSignal<ExecutionPulse>({
+    tasksCompleted: sessionActivity().completed,
+    ideasInPipeline: 8,
+    roadmapProgress: 35,
+    activeAgents: sessionActivity().busy,
+    estimatedCompletion: "2 hours",
   })
   
   const [projectHealth, setProjectHealth] = createSignal<ProjectHealth>({
@@ -255,62 +280,13 @@ export default function WorkspacePage() {
 
         {/* Active Agents & Recent Tasks */}
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Active Agents Panel */}
-          <Card class="p-6">
-            <div class="flex items-center justify-between mb-4">
-              <h2 class="text-xl font-semibold">Active Agents</h2>
-              <Button variant="ghost" size="small" onClick={() => navigate(`/${params.dir}/agents`)}>
-                View All
-              </Button>
-            </div>
-            <div class="space-y-3">
-              <div class="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
-                <div class="flex items-center gap-3">
-                  <div class="w-10 h-10 bg-purple-100 dark:bg-purple-900 rounded-lg flex items-center justify-center">
-                    <Icon name="mcp" class="size-5 text-purple-500" />
-                  </div>
-                  <div>
-                    <p class="font-medium">Claude 3.5 Sonnet</p>
-                    <p class="text-sm text-muted-foreground">Implementing auth flow</p>
-                  </div>
-                </div>
-                <div class="text-right">
-                  <p class="font-medium text-green-500">75%</p>
-                  <p class="text-xs text-muted-foreground">~15 min left</p>
-                </div>
-              </div>
-              <div class="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
-                <div class="flex items-center gap-3">
-                  <div class="w-10 h-10 bg-blue-100 dark:bg-blue-900 rounded-lg flex items-center justify-center">
-                    <Icon name="mcp" class="size-5 text-blue-500" />
-                  </div>
-                  <div>
-                    <p class="font-medium">GPT-4 Turbo</p>
-                    <p class="text-sm text-muted-foreground">Writing API docs</p>
-                  </div>
-                </div>
-                <div class="text-right">
-                  <p class="font-medium text-green-500">40%</p>
-                  <p class="text-xs text-muted-foreground">~30 min left</p>
-                </div>
-              </div>
-              <div class="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
-                <div class="flex items-center gap-3">
-                  <div class="w-10 h-10 bg-green-100 dark:bg-green-900 rounded-lg flex items-center justify-center">
-                    <Icon name="mcp" class="size-5 text-green-500" />
-                  </div>
-                  <div>
-                    <p class="font-medium">Gemini Pro</p>
-                    <p class="text-sm text-muted-foreground">Code review</p>
-                  </div>
-                </div>
-                <div class="text-right">
-                  <p class="font-medium text-green-500">90%</p>
-                  <p class="text-xs text-muted-foreground">~5 min left</p>
-                </div>
-              </div>
-            </div>
-          </Card>
+          {/* Active Agents Panel - Real-time SDK data */}
+          <ActiveAgentsPanel
+            sessions={store.session || []}
+            agents={store.agent || []}
+            sessionStatus={store.session_status || {}}
+            onViewSession={(sessionId) => navigate(`/${params.dir}/agents?session=${sessionId}`)}
+          />
 
           {/* Recent Tasks */}
           <Card class="p-6">

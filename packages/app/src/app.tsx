@@ -10,6 +10,7 @@ import { Diff } from "@opencode-ai/ui/diff"
 import { Code } from "@opencode-ai/ui/code"
 import { ThemeProvider } from "@opencode-ai/ui/theme"
 import { GlobalSyncProvider } from "@/context/global-sync"
+import { WorkflowProvider } from "@/context/workflow"
 import { PermissionProvider } from "@/context/permission"
 import { LayoutProvider } from "@/context/layout"
 import { GlobalSDKProvider } from "@/context/global-sdk"
@@ -97,7 +98,9 @@ export function AppInterface(props: { defaultUrl?: string }) {
                   <LayoutProvider>
                     <NotificationProvider>
                       <CommandProvider>
-                        <Layout>{props.children}</Layout>
+                        <WorkflowProvider>
+                          <Layout>{props.children}</Layout>
+                        </WorkflowProvider>
                       </CommandProvider>
                     </NotificationProvider>
                   </LayoutProvider>

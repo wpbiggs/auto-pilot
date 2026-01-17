@@ -1,179 +1,119 @@
-import { createSignal, createMemo, For, Show, onMount } from "solid-js"
+import { createSignal, createMemo, For, Show, createEffect } from "solid-js"
 import { useParams, useNavigate } from "@solidjs/router"
 import { Button } from "@opencode-ai/ui/button"
 import { Card } from "@opencode-ai/ui/card"
 import { Icon } from "@opencode-ai/ui/icon"
 import { Spinner } from "@opencode-ai/ui/spinner"
 import { base64Decode } from "@opencode-ai/util/encode"
-
-interface Agent {
-  id: string
-  name: string
-  provider: string
-  model: string
-  description: string
-  capabilities: string[]
-  costPerToken: number
-  speedRating: number
-  qualityRating: number
-  status: "available" | "busy" | "offline"
-  currentTask?: string
-  totalTasks: number
-  successRate: number
-  avgResponseTime: number
-}
+import { useGlobalSync } from "@/context/global-sync"
+import type { Agent } from "@opencode-ai/sdk/v2/client"
 
 interface AgentProfile {
   id: string
   name: string
   description: string
-  agents: string[]
+  agentNames: string[]
   useCase: string
 }
 
 export default function AgentToolsPage() {
   const params = useParams()
   const navigate = useNavigate()
+  const globalSync = useGlobalSync()
   
   const directory = createMemo(() => params.dir ? base64Decode(params.dir) : "")
+  const [store] = globalSync.child(directory())
   
   const [activeTab, setActiveTab] = createSignal<"agents" | "profiles" | "execution" | "config">("agents")
   const [selectedAgent, setSelectedAgent] = createSignal<string | null>(null)
-  
-  const [agents, setAgents] = createSignal<Agent[]>([
-    {
-      id: "claude-35-sonnet",
-      name: "Claude 3.5 Sonnet",
-      provider: "Anthropic",
-      model: "claude-3-5-sonnet-20241022",
-      description: "Fast and capable for most coding tasks",
-      capabilities: ["code-generation", "code-review", "debugging", "documentation"],
-      costPerToken: 0.003,
-      speedRating: 9,
-      qualityRating: 9,
-      status: "busy",
-      currentTask: "Implementing authentication",
-      totalTasks: 145,
-      successRate: 96,
-      avgResponseTime: 2.3,
-    },
-    {
-      id: "gpt-4-turbo",
-      name: "GPT-4 Turbo",
-      provider: "OpenAI",
-      model: "gpt-4-turbo-preview",
-      description: "Excellent for complex reasoning and planning",
-      capabilities: ["code-generation", "planning", "analysis", "documentation"],
-      costPerToken: 0.01,
-      speedRating: 7,
-      qualityRating: 9,
-      status: "available",
-      totalTasks: 89,
-      successRate: 94,
-      avgResponseTime: 4.1,
-    },
-    {
-      id: "gemini-pro",
-      name: "Gemini Pro",
-      provider: "Google",
-      model: "gemini-pro",
-      description: "Great for multi-modal tasks and fast responses",
-      capabilities: ["code-generation", "analysis", "translation"],
-      costPerToken: 0.0005,
-      speedRating: 10,
-      qualityRating: 7,
-      status: "available",
-      totalTasks: 67,
-      successRate: 91,
-      avgResponseTime: 1.2,
-    },
-    {
-      id: "claude-3-opus",
-      name: "Claude 3 Opus",
-      provider: "Anthropic",
-      model: "claude-3-opus-20240229",
-      description: "Highest quality for complex tasks",
-      capabilities: ["code-generation", "code-review", "architecture", "security-analysis"],
-      costPerToken: 0.015,
-      speedRating: 5,
-      qualityRating: 10,
-      status: "busy",
-      currentTask: "Security audit",
-      totalTasks: 34,
-      successRate: 99,
-      avgResponseTime: 8.5,
-    },
-    {
-      id: "gpt-4o-mini",
-      name: "GPT-4o Mini",
-      provider: "OpenAI",
-      model: "gpt-4o-mini",
-      description: "Cost-effective for simple tasks",
-      capabilities: ["code-generation", "documentation", "testing"],
-      costPerToken: 0.00015,
-      speedRating: 10,
-      qualityRating: 6,
-      status: "available",
-      totalTasks: 203,
-      successRate: 88,
-      avgResponseTime: 0.8,
-    },
-  ])
-
-  const [profiles, setProfiles] = createSignal<AgentProfile[]>([
-    {
-      id: "junior-dev",
-      name: "Junior Developer",
-      description: "Fast execution, cost-effective for routine tasks",
-      agents: ["gpt-4o-mini", "gemini-pro"],
-      useCase: "Simple code generation, documentation, testing",
-    },
-    {
-      id: "senior-dev",
-      name: "Senior Developer",
-      description: "High quality output for complex development",
-      agents: ["claude-35-sonnet", "gpt-4-turbo"],
-      useCase: "Feature implementation, architecture, code review",
-    },
-    {
-      id: "code-reviewer",
-      name: "Code Reviewer",
-      description: "Specialized for code review and security",
-      agents: ["claude-3-opus", "claude-35-sonnet"],
-      useCase: "Pull request reviews, security analysis",
-    },
-    {
-      id: "doc-writer",
-      name: "Documentation Writer",
-      description: "Focused on creating documentation",
-      agents: ["gpt-4-turbo", "claude-35-sonnet"],
-      useCase: "API docs, README files, user guides",
-    },
-  ])
-
   const [autoSelectEnabled, setAutoSelectEnabled] = createSignal(true)
-  const [defaultAgent, setDefaultAgent] = createSignal("claude-35-sonnet")
+  const [defaultAgent, setDefaultAgent] = createSignal("")
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case "available": return "bg-green-500"
-      case "busy": return "bg-blue-500 animate-pulse"
-      case "offline": return "bg-gray-400"
-      default: return "bg-gray-400"
+  // Get agents from the SDK store
+  const agents = createMemo(() => store.agent || [])
+  
+  // Derive agent stats
+  const busyAgents = createMemo(() => {
+    // Check sessions to see which agents are actively working
+    // SessionStatus type can be { type: "idle" } | { type: "busy" } | { type: "retry", ... }
+    const activeSessions = store.session.filter(s => {
+      const status = store.session_status[s.id]
+      return status && status.type === "busy"
+    })
+    // Note: Session type doesn't have agent property, this is placeholder logic
+    return agents().slice(0, 0) // Return empty for now - no agent tracking in sessions
+  })
+  
+  const availableAgents = createMemo(() => {
+    const busyNames = new Set(busyAgents().map(a => a.name))
+    return agents().filter(a => !busyNames.has(a.name) && !a.hidden)
+  })
+
+  const visibleAgents = createMemo(() => agents().filter(a => !a.hidden))
+
+  // Create profiles based on agent modes
+  const profiles = createMemo<AgentProfile[]>(() => {
+    const agentList = agents()
+    return [
+      {
+        id: "primary",
+        name: "Primary Agents",
+        description: "Main agents for direct task execution",
+        agentNames: agentList.filter(a => a.mode === "primary" || a.mode === "all").map(a => a.name),
+        useCase: "Feature implementation, debugging, code review",
+      },
+      {
+        id: "subagent",
+        name: "Sub-Agents",
+        description: "Specialized agents for specific subtasks",
+        agentNames: agentList.filter(a => a.mode === "subagent" || a.mode === "all").map(a => a.name),
+        useCase: "Research, testing, documentation generation",
+      },
+    ].filter(p => p.agentNames.length > 0)
+  })
+
+  // Set default agent from config
+  createEffect(() => {
+    const agentList = agents()
+    if (agentList.length > 0 && !defaultAgent()) {
+      setDefaultAgent(agentList[0].name)
+    }
+  })
+
+  const getStatusColor = (agent: Agent) => {
+    const busyNames = new Set(busyAgents().map(a => a.name))
+    if (busyNames.has(agent.name)) return "bg-blue-500 animate-pulse"
+    return "bg-green-500"
+  }
+
+  const getProviderColor = (providerID?: string) => {
+    if (!providerID) return "bg-gray-100 dark:bg-gray-900 text-gray-700 dark:text-gray-300"
+    const provider = providerID.toLowerCase()
+    if (provider.includes("anthropic")) return "bg-purple-100 dark:bg-purple-900 text-purple-700 dark:text-purple-300"
+    if (provider.includes("openai")) return "bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300"
+    if (provider.includes("google") || provider.includes("gemini")) return "bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300"
+    if (provider.includes("amazon") || provider.includes("bedrock")) return "bg-orange-100 dark:bg-orange-900 text-orange-700 dark:text-orange-300"
+    return "bg-gray-100 dark:bg-gray-900 text-gray-700 dark:text-gray-300"
+  }
+
+  const getModeLabel = (mode: Agent["mode"]) => {
+    switch (mode) {
+      case "primary": return "Primary"
+      case "subagent": return "Sub-Agent"
+      case "all": return "Universal"
+      default: return mode
     }
   }
 
-  const getProviderColor = (provider: string) => {
-    switch (provider.toLowerCase()) {
-      case "anthropic": return "bg-purple-100 dark:bg-purple-900 text-purple-700 dark:text-purple-300"
-      case "openai": return "bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300"
-      case "google": return "bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300"
-      default: return "bg-gray-100 dark:bg-gray-900 text-gray-700 dark:text-gray-300"
-    }
+  const getCurrentTask = (agentName: string) => {
+    // Sessions don't track agent assignment in the SDK type
+    // This would require extending the session model or using a different tracking mechanism
+    const activeSession = store.session.find(s => {
+      const status = store.session_status[s.id]
+      return status && status.type === "busy"
+    })
+    return activeSession?.title || undefined
   }
-
-  const busyAgents = createMemo(() => agents().filter(a => a.status === "busy"))
-  const availableAgents = createMemo(() => agents().filter(a => a.status === "available"))
 
   return (
     <div class="flex-1 flex flex-col overflow-hidden bg-background">
@@ -194,6 +134,10 @@ export default function AgentToolsPage() {
 
         {/* Stats */}
         <div class="flex items-center gap-6 text-sm">
+          <div class="flex items-center gap-2">
+            <span class="text-muted-foreground">Total Agents:</span>
+            <span class="font-semibold">{visibleAgents().length}</span>
+          </div>
           <div class="flex items-center gap-2">
             <span class="w-2 h-2 bg-green-500 rounded-full" />
             <span class="text-muted-foreground">Available:</span>
@@ -255,127 +199,135 @@ export default function AgentToolsPage() {
       {/* Content */}
       <div class="flex-1 overflow-auto p-6">
         <Show when={activeTab() === "agents"}>
-          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            <For each={agents()}>
-              {(agent) => (
-                <Card 
-                  class={`p-4 cursor-pointer transition-all hover:shadow-lg ${
-                    selectedAgent() === agent.id ? "ring-2 ring-primary" : ""
-                  }`}
-                  onClick={() => setSelectedAgent(selectedAgent() === agent.id ? null : agent.id)}
-                >
-                  <div class="flex items-start justify-between mb-3">
-                    <div class="flex items-center gap-2">
-                      <div class={`w-3 h-3 rounded-full ${getStatusColor(agent.status)}`} />
-                      <h3 class="font-semibold">{agent.name}</h3>
+          <Show when={visibleAgents().length > 0} fallback={
+            <div class="text-center py-12">
+              <Icon name="mcp" class="size-16 text-muted-foreground mx-auto mb-4" />
+              <h3 class="text-xl font-semibold mb-2">No Agents Configured</h3>
+              <p class="text-muted-foreground mb-4">
+                Agents are configured in your opencode.yaml file. Add an agent configuration to get started.
+              </p>
+              <Button onClick={() => navigate(`/${params.dir}/session`)}>
+                Open Session
+              </Button>
+            </div>
+          }>
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              <For each={visibleAgents()}>
+                {(agent) => (
+                  <Card 
+                    class={`p-4 cursor-pointer transition-all hover:shadow-lg ${
+                      selectedAgent() === agent.name ? "ring-2 ring-primary" : ""
+                    }`}
+                    onClick={() => setSelectedAgent(selectedAgent() === agent.name ? null : agent.name)}
+                  >
+                    <div class="flex items-start justify-between mb-3">
+                      <div class="flex items-center gap-2">
+                        <div class={`w-3 h-3 rounded-full ${getStatusColor(agent)}`} />
+                        <h3 class="font-semibold">{agent.name}</h3>
+                      </div>
+                      <span class={`text-xs px-2 py-1 rounded-full ${getProviderColor(agent.model?.providerID)}`}>
+                        {agent.model?.providerID || "Custom"}
+                      </span>
                     </div>
-                    <span class={`text-xs px-2 py-1 rounded-full ${getProviderColor(agent.provider)}`}>
-                      {agent.provider}
-                    </span>
-                  </div>
-                  
-                  <p class="text-sm text-muted-foreground mb-3">{agent.description}</p>
-                  
-                  <Show when={agent.currentTask}>
-                    <div class="mb-3 p-2 bg-blue-50 dark:bg-blue-950 rounded-lg">
-                      <p class="text-xs text-blue-600 dark:text-blue-400 flex items-center">
-                        <Spinner class="size-3 mr-1" />
-                        {agent.currentTask}
-                      </p>
-                    </div>
-                  </Show>
-                  
-                  <div class="flex items-center gap-4 mb-3 text-xs text-muted-foreground">
-                    <div class="flex items-center gap-1">
-                      <Icon name="enter" class="size-3" />
-                      Speed: {agent.speedRating}/10
-                    </div>
-                    <div class="flex items-center gap-1">
-                      <Icon name="check" class="size-3" />
-                      Quality: {agent.qualityRating}/10
-                    </div>
-                  </div>
-                  
-                  <div class="flex items-center gap-2 flex-wrap mb-3">
-                    <For each={agent.capabilities.slice(0, 3)}>
-                      {(cap) => (
-                        <span class="text-xs px-2 py-0.5 rounded-full bg-muted">
-                          {cap}
-                        </span>
-                      )}
-                    </For>
-                    <Show when={agent.capabilities.length > 3}>
-                      <span class="text-xs text-muted-foreground">+{agent.capabilities.length - 3}</span>
+                    
+                    <p class="text-sm text-muted-foreground mb-3 line-clamp-2">
+                      {agent.description || `${getModeLabel(agent.mode)} agent using ${agent.model?.modelID || "default model"}`}
+                    </p>
+                    
+                    <Show when={getCurrentTask(agent.name)}>
+                      <div class="mb-3 p-2 bg-blue-50 dark:bg-blue-950 rounded-lg">
+                        <p class="text-xs text-blue-600 dark:text-blue-400 flex items-center">
+                          <Spinner class="size-3 mr-1" />
+                          {getCurrentTask(agent.name)}
+                        </p>
+                      </div>
                     </Show>
-                  </div>
-                  
-                  <div class="pt-3 border-t border-border grid grid-cols-3 gap-2 text-center text-xs">
-                    <div>
-                      <p class="text-muted-foreground">Tasks</p>
-                      <p class="font-semibold">{agent.totalTasks}</p>
+                    
+                    <div class="flex items-center gap-2 flex-wrap mb-3">
+                      <span class="text-xs px-2 py-0.5 rounded-full bg-muted">
+                        {getModeLabel(agent.mode)}
+                      </span>
+                      <Show when={agent.native}>
+                        <span class="text-xs px-2 py-0.5 rounded-full bg-purple-100 dark:bg-purple-900 text-purple-700 dark:text-purple-300">
+                          Native
+                        </span>
+                      </Show>
+                      <Show when={agent.model?.modelID}>
+                        <span class="text-xs px-2 py-0.5 rounded-full bg-muted">
+                          {agent.model!.modelID}
+                        </span>
+                      </Show>
                     </div>
-                    <div>
-                      <p class="text-muted-foreground">Success</p>
-                      <p class="font-semibold text-green-500">{agent.successRate}%</p>
-                    </div>
-                    <div>
-                      <p class="text-muted-foreground">Avg Time</p>
-                      <p class="font-semibold">{agent.avgResponseTime}s</p>
-                    </div>
-                  </div>
-                </Card>
-              )}
-            </For>
-          </div>
+                    
+                    <Show when={agent.temperature !== undefined || agent.topP !== undefined}>
+                      <div class="pt-3 border-t border-border grid grid-cols-2 gap-2 text-center text-xs">
+                        <Show when={agent.temperature !== undefined}>
+                          <div>
+                            <p class="text-muted-foreground">Temperature</p>
+                            <p class="font-semibold">{agent.temperature}</p>
+                          </div>
+                        </Show>
+                        <Show when={agent.topP !== undefined}>
+                          <div>
+                            <p class="text-muted-foreground">Top P</p>
+                            <p class="font-semibold">{agent.topP}</p>
+                          </div>
+                        </Show>
+                      </div>
+                    </Show>
+                  </Card>
+                )}
+              </For>
+            </div>
+          </Show>
         </Show>
 
         <Show when={activeTab() === "profiles"}>
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <For each={profiles()}>
-              {(profile) => (
-                <Card class="p-4">
-                  <div class="flex items-start justify-between mb-3">
+          <Show when={profiles().length > 0} fallback={
+            <div class="text-center py-12">
+              <Icon name="code-lines" class="size-16 text-muted-foreground mx-auto mb-4" />
+              <h3 class="text-xl font-semibold mb-2">No Agent Profiles</h3>
+              <p class="text-muted-foreground">
+                Profiles are created based on agent configurations.
+              </p>
+            </div>
+          }>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <For each={profiles()}>
+                {(profile) => (
+                  <Card class="p-4">
+                    <div class="flex items-start justify-between mb-3">
+                      <div>
+                        <h3 class="font-semibold text-lg">{profile.name}</h3>
+                        <p class="text-sm text-muted-foreground">{profile.description}</p>
+                      </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                      <p class="text-xs text-muted-foreground mb-2">Best for:</p>
+                      <p class="text-sm">{profile.useCase}</p>
+                    </div>
+                    
                     <div>
-                      <h3 class="font-semibold text-lg">{profile.name}</h3>
-                      <p class="text-sm text-muted-foreground">{profile.description}</p>
-                    </div>
-                    <Button size="small" variant="ghost">
-                      <Icon name="edit-small-2" class="size-4" />
-                    </Button>
-                  </div>
-                  
-                  <div class="mb-3">
-                    <p class="text-xs text-muted-foreground mb-2">Best for:</p>
-                    <p class="text-sm">{profile.useCase}</p>
-                  </div>
-                  
-                  <div>
-                    <p class="text-xs text-muted-foreground mb-2">Agents:</p>
-                    <div class="flex gap-2 flex-wrap">
-                      <For each={profile.agents}>
-                        {(agentId) => {
-                          const agent = agents().find(a => a.id === agentId)
-                          return (
+                      <p class="text-xs text-muted-foreground mb-2">Agents ({profile.agentNames.length}):</p>
+                      <div class="flex gap-2 flex-wrap">
+                        <For each={profile.agentNames.slice(0, 5)}>
+                          {(agentName) => (
                             <span class="text-xs px-2 py-1 rounded-full bg-purple-100 dark:bg-purple-900 text-purple-700 dark:text-purple-300">
-                              {agent?.name || agentId}
+                              {agentName}
                             </span>
-                          )
-                        }}
-                      </For>
+                          )}
+                        </For>
+                        <Show when={profile.agentNames.length > 5}>
+                          <span class="text-xs text-muted-foreground">+{profile.agentNames.length - 5} more</span>
+                        </Show>
+                      </div>
                     </div>
-                  </div>
-                </Card>
-              )}
-            </For>
-            
-            <Card class="p-4 border-dashed flex items-center justify-center cursor-pointer hover:bg-muted/50 transition-colors">
-              <div class="text-center">
-                <Icon name="plus" class="size-8 text-muted-foreground mx-auto mb-2" />
-                <p class="font-medium">Create New Profile</p>
-                <p class="text-sm text-muted-foreground">Define custom agent combinations</p>
-              </div>
-            </Card>
-          </div>
+                  </Card>
+                )}
+              </For>
+            </div>
+          </Show>
         </Show>
 
         <Show when={activeTab() === "execution"}>
@@ -391,28 +343,27 @@ export default function AgentToolsPage() {
             }>
               <div class="space-y-4">
                 <For each={busyAgents()}>
-                  {(agent) => (
-                    <div class="p-4 border border-border rounded-lg">
-                      <div class="flex items-center justify-between mb-3">
-                        <div class="flex items-center gap-3">
-                          <div class="w-10 h-10 bg-purple-100 dark:bg-purple-900 rounded-lg flex items-center justify-center">
-                            <Icon name="mcp" class="size-5 text-purple-500" />
-                          </div>
-                          <div>
-                            <h4 class="font-semibold">{agent.name}</h4>
-                            <p class="text-sm text-muted-foreground">{agent.currentTask}</p>
+                  {(agent) => {
+                    const currentTask = getCurrentTask(agent.name)
+                    return (
+                      <div class="p-4 border border-border rounded-lg">
+                        <div class="flex items-center justify-between mb-3">
+                          <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 bg-purple-100 dark:bg-purple-900 rounded-lg flex items-center justify-center">
+                              <Icon name="mcp" class="size-5 text-purple-500" />
+                            </div>
+                            <div>
+                              <h4 class="font-semibold">{agent.name}</h4>
+                              <p class="text-sm text-muted-foreground">{currentTask || "Processing..."}</p>
+                            </div>
                           </div>
                         </div>
-                        <Button size="small" variant="ghost">
-                          <Icon name="close" class="size-4" />
-                          Cancel
-                        </Button>
+                        <div class="h-2 bg-gray-200 dark:bg-gray-700 rounded-full">
+                          <div class="h-full bg-blue-500 rounded-full animate-pulse" style={{ width: "60%" }} />
+                        </div>
                       </div>
-                      <div class="h-2 bg-gray-200 dark:bg-gray-700 rounded-full">
-                        <div class="h-full bg-blue-500 rounded-full animate-pulse" style={{ width: "60%" }} />
-                      </div>
-                    </div>
-                  )}
+                    )
+                  }}
                 </For>
               </div>
             </Show>
@@ -438,41 +389,48 @@ export default function AgentToolsPage() {
                   </button>
                 </div>
                 
-                <div>
-                  <label class="block text-sm font-medium mb-2">Default Agent</label>
-                  <select 
-                    class="w-full px-3 py-2 rounded-md border border-border bg-background"
-                    value={defaultAgent()}
-                    onChange={(e) => setDefaultAgent(e.currentTarget.value)}
-                  >
-                    <For each={agents()}>
-                      {(agent) => <option value={agent.id}>{agent.name}</option>}
-                    </For>
-                  </select>
-                </div>
+                <Show when={visibleAgents().length > 0}>
+                  <div>
+                    <label class="block text-sm font-medium mb-2">Default Agent</label>
+                    <select 
+                      class="w-full px-3 py-2 rounded-md border border-border bg-background"
+                      value={defaultAgent()}
+                      onChange={(e) => setDefaultAgent(e.currentTarget.value)}
+                    >
+                      <For each={visibleAgents()}>
+                        {(agent) => <option value={agent.name}>{agent.name}</option>}
+                      </For>
+                    </select>
+                  </div>
+                </Show>
               </div>
             </Card>
 
             <Card class="p-6">
-              <h2 class="text-xl font-bold mb-4">Rate Limits</h2>
+              <h2 class="text-xl font-bold mb-4">Agent Configuration</h2>
+              <p class="text-sm text-muted-foreground mb-4">
+                Agents are configured in your project's <code class="px-1 py-0.5 bg-muted rounded">opencode.yaml</code> file.
+              </p>
               
-              <div class="space-y-4">
-                <For each={agents()}>
-                  {(agent) => (
-                    <div class="flex items-center justify-between p-3 bg-muted/30 rounded-lg">
-                      <div class="flex items-center gap-3">
-                        <span class={`px-2 py-1 rounded text-xs ${getProviderColor(agent.provider)}`}>
-                          {agent.provider}
-                        </span>
-                        <span class="font-medium">{agent.name}</span>
+              <Show when={visibleAgents().length > 0}>
+                <div class="space-y-4">
+                  <For each={visibleAgents()}>
+                    {(agent) => (
+                      <div class="flex items-center justify-between p-3 bg-muted/30 rounded-lg">
+                        <div class="flex items-center gap-3">
+                          <span class={`px-2 py-1 rounded text-xs ${getProviderColor(agent.model?.providerID)}`}>
+                            {agent.model?.providerID || "Custom"}
+                          </span>
+                          <span class="font-medium">{agent.name}</span>
+                        </div>
+                        <div class="text-sm text-muted-foreground">
+                          {agent.model?.modelID || "Default model"}
+                        </div>
                       </div>
-                      <div class="text-sm text-muted-foreground">
-                        ${(agent.costPerToken * 1000).toFixed(4)} / 1K tokens
-                      </div>
-                    </div>
-                  )}
-                </For>
-              </div>
+                    )}
+                  </For>
+                </div>
+              </Show>
             </Card>
           </div>
         </Show>

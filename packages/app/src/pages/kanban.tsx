@@ -1,10 +1,13 @@
-import { createSignal, createMemo, For, Show } from "solid-js"
+import { createSignal, createMemo, createEffect, For, Show } from "solid-js"
 import { useParams, useNavigate, useSearchParams } from "@solidjs/router"
 import { Button } from "@opencode-ai/ui/button"
 import { Card } from "@opencode-ai/ui/card"
 import { Icon } from "@opencode-ai/ui/icon"
 import { Spinner } from "@opencode-ai/ui/spinner"
 import { base64Decode } from "@opencode-ai/util/encode"
+import { useWorkflow } from "@/context/workflow"
+import { useGlobalSync } from "@/context/global-sync"
+import { useGlobalSDK } from "@/context/global-sdk"
 import {
   DragDropProvider,
   DragDropSensors,
@@ -48,8 +51,13 @@ export default function KanbanPage() {
   const params = useParams()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
+  const [workflowStore, workflowActions] = useWorkflow()
+  const globalSync = useGlobalSync()
+  const sdk = useGlobalSDK()
   
   const directory = createMemo(() => params.dir ? base64Decode(params.dir) : "")
+  const [store] = globalSync.child(directory())
+  const [importedFromRoadmap, setImportedFromRoadmap] = createSignal(false)
   
   const [tasks, setTasks] = createSignal<Task[]>([
     {
@@ -136,6 +144,34 @@ export default function KanbanPage() {
   const [selectedColumn, setSelectedColumn] = createSignal<string>("backlog")
   const [isAutoExecuting, setIsAutoExecuting] = createSignal(false)
   const [draggedTask, setDraggedTask] = createSignal<Task | null>(null)
+  const [selectedTasks, setSelectedTasks] = createSignal<Set<string>>(new Set())
+  const [showBulkActions, setShowBulkActions] = createSignal(false)
+
+  // Import tasks from roadmap workflow when coming from roadmap page
+  createEffect(() => {
+    if (searchParams.fromRoadmap && !importedFromRoadmap() && workflowStore.roadmapItems.length > 0) {
+      // Populate kanban from roadmap items
+      const newTasks = workflowActions.populateKanbanFromRoadmap()
+      
+      // Add new tasks to local state
+      const localTasks: Task[] = newTasks.map(t => ({
+        id: t.id,
+        title: t.title,
+        description: t.description,
+        status: t.status,
+        priority: t.priority,
+        assignedAgent: t.assignedAgent,
+        progress: t.progress,
+        estimatedTime: undefined,
+        dependencies: t.dependencies,
+        createdAt: new Date(t.createdAt),
+        tags: t.tags,
+      }))
+      
+      setTasks(prev => [...prev, ...localTasks])
+      setImportedFromRoadmap(true)
+    }
+  })
 
   const tasksByColumn = createMemo(() => {
     const grouped: Record<string, Task[]> = {}
@@ -185,22 +221,113 @@ export default function KanbanPage() {
     ))
   }
 
+  const updateTaskTitle = (taskId: string, title: string) => {
+    setTasks(prev => prev.map(task =>
+      task.id === taskId ? { ...task, title } : task
+    ))
+  }
+
+  const deleteTask = (taskId: string) => {
+    setTasks(prev => prev.filter(task => task.id !== taskId))
+    setSelectedTasks(prev => {
+      const newSet = new Set(prev)
+      newSet.delete(taskId)
+      return newSet
+    })
+  }
+
+  const toggleTaskSelection = (taskId: string) => {
+    setSelectedTasks(prev => {
+      const newSet = new Set(prev)
+      if (newSet.has(taskId)) {
+        newSet.delete(taskId)
+      } else {
+        newSet.add(taskId)
+      }
+      setShowBulkActions(newSet.size > 0)
+      return newSet
+    })
+  }
+
+  const bulkMoveSelectedTasks = (newStatus: Task["status"]) => {
+    setTasks(prev => prev.map(task =>
+      selectedTasks().has(task.id)
+        ? { ...task, status: newStatus, progress: newStatus === "done" ? 100 : task.progress }
+        : task
+    ))
+    setSelectedTasks(new Set<string>())
+    setShowBulkActions(false)
+  }
+
+  const bulkDeleteSelectedTasks = () => {
+    setTasks(prev => prev.filter(task => !selectedTasks().has(task.id)))
+    setSelectedTasks(new Set<string>())
+    setShowBulkActions(false)
+  }
+
+  const bulkAssignAgent = (agent: string) => {
+    setTasks(prev => prev.map(task =>
+      selectedTasks().has(task.id)
+        ? { ...task, assignedAgent: agent, status: "in-progress" }
+        : task
+    ))
+    setSelectedTasks(new Set<string>())
+    setShowBulkActions(false)
+  }
+
   const startAutoExecution = async () => {
     setIsAutoExecuting(true)
     
-    // Simulate auto-execution
+    const dir = directory()
+    if (!dir) {
+      setIsAutoExecuting(false)
+      return
+    }
+    
+    // Get available agents from store
+    const availableAgents = store.agent || []
+    
+    // Get backlog tasks to execute
     const backlogTasks = tasksByColumn()["backlog"]
-    for (const task of backlogTasks.slice(0, 2)) {
-      await new Promise(resolve => setTimeout(resolve, 1000))
+    
+    for (const task of backlogTasks.slice(0, 3)) {
+      try {
+        // Select an agent (prefer first available, or use from configured agents)
+        const agentName = availableAgents.length > 0 
+          ? availableAgents[Math.floor(Math.random() * availableAgents.length)].name 
+          : undefined
+        
+        // Create a session via SDK client
+        const response = await sdk.client.session.create({
+          directory: dir,
+          title: task.title,
+        })
+        
+        if (response.data) {
+          // Update task to in-progress with the assigned agent
+          setTasks(prev => prev.map(t => 
+            t.id === task.id 
+              ? { 
+                  ...t, 
+                  assignedAgent: agentName || "AI Agent", 
+                  status: "in-progress" as const, 
+                  progress: 10,
+                  estimatedTime: "Processing..."
+                }
+              : t
+          ))
+          
+          // Navigate to the session to start the task
+          navigate(`/${params.dir}/session/${response.data.id}`)
+          return // For now, just start one session and navigate to it
+        }
+      } catch (error) {
+        console.error("Failed to start auto execution for task:", task.id, error)
+        // Mark as failed or keep in backlog
+      }
       
-      const agents = ["Claude 3.5 Sonnet", "GPT-4 Turbo", "Gemini Pro"]
-      const randomAgent = agents[Math.floor(Math.random() * agents.length)]
-      
-      setTasks(prev => prev.map(t => 
-        t.id === task.id 
-          ? { ...t, assignedAgent: randomAgent, status: "in-progress", progress: 0 }
-          : t
-      ))
+      // Small delay between task starts
+      await new Promise(resolve => setTimeout(resolve, 500))
     }
     
     setIsAutoExecuting(false)
@@ -329,6 +456,65 @@ export default function KanbanPage() {
         </Button>
       </div>
 
+      {/* Bulk Actions Bar */}
+      <Show when={showBulkActions()}>
+        <div class="border-b border-border bg-blue-50 dark:bg-blue-950 p-3 flex items-center gap-4">
+          <span class="text-sm font-medium text-blue-700 dark:text-blue-300">
+            {selectedTasks().size} task(s) selected
+          </span>
+          <div class="flex items-center gap-2">
+            <select
+              class="px-2 py-1 rounded border border-border bg-background text-sm"
+              onChange={(e) => {
+                if (e.currentTarget.value) {
+                  bulkMoveSelectedTasks(e.currentTarget.value as Task["status"])
+                  e.currentTarget.value = ""
+                }
+              }}
+            >
+              <option value="">Move to...</option>
+              <For each={columns}>
+                {(col) => <option value={col.status}>{col.title}</option>}
+              </For>
+            </select>
+            <select
+              class="px-2 py-1 rounded border border-border bg-background text-sm"
+              onChange={(e) => {
+                if (e.currentTarget.value) {
+                  bulkAssignAgent(e.currentTarget.value)
+                  e.currentTarget.value = ""
+                }
+              }}
+            >
+              <option value="">Assign to...</option>
+              <option value="Claude 3.5 Sonnet">Claude 3.5 Sonnet</option>
+              <option value="GPT-4 Turbo">GPT-4 Turbo</option>
+              <option value="Gemini Pro">Gemini Pro</option>
+              <option value="Claude 3 Opus">Claude 3 Opus</option>
+            </select>
+            <Button 
+              variant="ghost" 
+              size="small" 
+              class="text-red-500 hover:bg-red-100 dark:hover:bg-red-950"
+              onClick={bulkDeleteSelectedTasks}
+            >
+              <Icon name="close" class="size-4 mr-1" />
+              Delete
+            </Button>
+            <Button 
+              variant="ghost" 
+              size="small"
+              onClick={() => {
+                setSelectedTasks(new Set<string>())
+                setShowBulkActions(false)
+              }}
+            >
+              Clear Selection
+            </Button>
+          </div>
+        </div>
+      </Show>
+
       {/* Kanban Board */}
       <div class="flex-1 overflow-x-auto p-4">
         <DragDropProvider onDragStart={onDragStart} onDragEnd={onDragEnd} collisionDetector={closestCenter}>
@@ -356,7 +542,11 @@ export default function KanbanPage() {
                           task={task} 
                           onMove={moveTask}
                           onAssign={assignAgent}
+                          onUpdateTitle={updateTaskTitle}
+                          onDelete={deleteTask}
                           getPriorityColor={getPriorityColor}
+                          isSelected={selectedTasks().has(task.id)}
+                          onToggleSelect={toggleTaskSelection}
                         />
                       )}
                     </For>
@@ -389,23 +579,104 @@ function TaskCard(props: {
   task: Task
   onMove: (taskId: string, status: Task["status"]) => void
   onAssign: (taskId: string, agent: string) => void
+  onUpdateTitle: (taskId: string, title: string) => void
+  onDelete: (taskId: string) => void
   getPriorityColor: (priority: string) => string
+  isSelected: boolean
+  onToggleSelect: (taskId: string) => void
 }) {
   const sortable = createSortable(props.task.id)
+  const [isEditing, setIsEditing] = createSignal(false)
+  const [editTitle, setEditTitle] = createSignal(props.task.title)
+  const [showMenu, setShowMenu] = createSignal(false)
   
   const agents = ["Claude 3.5 Sonnet", "GPT-4 Turbo", "Gemini Pro", "Claude 3 Opus"]
+  
+  const handleSaveTitle = () => {
+    if (editTitle().trim() && editTitle() !== props.task.title) {
+      props.onUpdateTitle(props.task.id, editTitle())
+    }
+    setIsEditing(false)
+  }
   
   return (
     <div
       ref={sortable.ref}
-      class={`p-3 bg-card border-l-4 rounded-lg shadow-sm cursor-grab active:cursor-grabbing hover:shadow-md transition-shadow ${props.getPriorityColor(props.task.priority)}`}
+      class={`p-3 bg-card border-l-4 rounded-lg shadow-sm cursor-grab active:cursor-grabbing hover:shadow-md transition-all ${props.getPriorityColor(props.task.priority)} ${props.isSelected ? "ring-2 ring-blue-500" : ""}`}
       classList={{ "opacity-25": sortable.isActiveDraggable }}
     >
       <div class="flex items-start justify-between mb-2">
-        <h4 class="font-medium text-sm line-clamp-2">{props.task.title}</h4>
-        <span class="text-xs px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
-          {props.task.priority}
-        </span>
+        <div class="flex items-center gap-2 flex-1 min-w-0">
+          <input
+            type="checkbox"
+            checked={props.isSelected}
+            onChange={() => props.onToggleSelect(props.task.id)}
+            class="size-4 rounded border-border"
+            onClick={(e) => e.stopPropagation()}
+          />
+          <Show when={isEditing()} fallback={
+            <h4 
+              class="font-medium text-sm line-clamp-2 cursor-pointer hover:text-blue-500 flex-1"
+              onDblClick={() => {
+                setEditTitle(props.task.title)
+                setIsEditing(true)
+              }}
+            >
+              {props.task.title}
+            </h4>
+          }>
+            <input
+              type="text"
+              value={editTitle()}
+              onInput={(e) => setEditTitle(e.currentTarget.value)}
+              onBlur={handleSaveTitle}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handleSaveTitle()
+                if (e.key === "Escape") setIsEditing(false)
+              }}
+              class="flex-1 px-1 py-0.5 text-sm border border-border rounded bg-background"
+              autofocus
+            />
+          </Show>
+        </div>
+        <div class="flex items-center gap-1">
+          <span class="text-xs px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
+            {props.task.priority}
+          </span>
+          <div class="relative">
+            <button 
+              class="p-1 hover:bg-muted rounded text-muted-foreground hover:text-foreground"
+              onClick={() => setShowMenu(!showMenu())}
+            >
+              <Icon name="menu" class="size-3" />
+            </button>
+            <Show when={showMenu()}>
+              <div class="absolute right-0 top-6 z-10 bg-card border border-border rounded-lg shadow-lg py-1 min-w-32">
+                <button 
+                  class="w-full px-3 py-1.5 text-left text-sm hover:bg-muted flex items-center gap-2"
+                  onClick={() => {
+                    setEditTitle(props.task.title)
+                    setIsEditing(true)
+                    setShowMenu(false)
+                  }}
+                >
+                  <Icon name="code" class="size-3" />
+                  Edit
+                </button>
+                <button 
+                  class="w-full px-3 py-1.5 text-left text-sm hover:bg-muted flex items-center gap-2 text-red-500"
+                  onClick={() => {
+                    props.onDelete(props.task.id)
+                    setShowMenu(false)
+                  }}
+                >
+                  <Icon name="close" class="size-3" />
+                  Delete
+                </button>
+              </div>
+            </Show>
+          </div>
+        </div>
       </div>
       
       <Show when={props.task.description}>
