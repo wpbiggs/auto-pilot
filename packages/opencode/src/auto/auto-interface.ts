@@ -1,5 +1,6 @@
 import { Tool } from "../tool/tool"
 import { AutoSelector } from "./auto-selector"
+import type { TaskAnalysis } from "./auto-selector"
 import { Session } from "../session"
 import { MessageV2 } from "../session/message-v2"
 import { Agent } from "../agent/agent"
@@ -264,7 +265,7 @@ async function handleParallelExecution(
 
 async function breakDownTask(
   prompt: string,
-  analysis: AutoSelector.TaskAnalysis,
+  analysis: TaskAnalysis,
 ): Promise<Array<{ description: string; prompt: string }>> {
   // Simple task breakdown logic - can be enhanced with AI
   const tasks = []

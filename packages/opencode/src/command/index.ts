@@ -4,7 +4,10 @@ import { Config } from "../config/config"
 import { Instance } from "../project/instance"
 import { Identifier } from "../id/id"
 import PROMPT_INITIALIZE from "./template/initialize.txt"
-import PROMPT_REVIEW from "./template/review.txt"
+import PROMPT_REVIEW from "../agent/prompt/review.txt"
+import PROMPT_TEST from "../agent/prompt/test.txt"
+import PROMPT_DEBUG from "../agent/prompt/debug.txt"
+import PROMPT_DOCS from "../agent/prompt/docs.txt"
 import { MCP } from "../mcp"
 
 export namespace Command {
@@ -53,6 +56,9 @@ export namespace Command {
   export const Default = {
     INIT: "init",
     REVIEW: "review",
+    TEST: "test",
+    DEBUG: "debug",
+    DOCS: "docs",
   } as const
 
   const state = Instance.state(async () => {
@@ -75,6 +81,33 @@ export namespace Command {
         },
         subtask: true,
         hints: hints(PROMPT_REVIEW),
+      },
+      [Default.TEST]: {
+        name: Default.TEST,
+        description: "run tests",
+        get template() {
+          return PROMPT_TEST.replace("${path}", Instance.worktree)
+        },
+        subtask: true,
+        hints: hints(PROMPT_TEST),
+      },
+      [Default.DEBUG]: {
+        name: Default.DEBUG,
+        description: "debug an issue",
+        get template() {
+          return PROMPT_DEBUG.replace("${path}", Instance.worktree)
+        },
+        subtask: true,
+        hints: hints(PROMPT_DEBUG),
+      },
+      [Default.DOCS]: {
+        name: Default.DOCS,
+        description: "write documentation",
+        get template() {
+          return PROMPT_DOCS.replace("${path}", Instance.worktree)
+        },
+        subtask: true,
+        hints: hints(PROMPT_DOCS),
       },
     }
 

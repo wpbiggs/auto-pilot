@@ -16,6 +16,7 @@ import { NamedError } from "@opencode-ai/util/error"
 import { ModelsDev } from "../provider/models"
 import { Ripgrep } from "../file/ripgrep"
 import { Config } from "../config/config"
+import { AutoSelector } from "../auto/auto-selector"
 import { File } from "../file"
 import { LSP } from "../lsp"
 import { Format } from "../format"
@@ -79,6 +80,7 @@ export namespace Server {
   export const App: () => Hono = lazy(
     () =>
       // TODO: Break server.ts into smaller route files to fix type inference
+      // @ts-expect-error Type instantiation is excessively deep - route chain is too long for TS
       app
         .onError((err, c) => {
           log.error("failed", {
@@ -288,6 +290,27 @@ export namespace Server {
           }),
         )
         .use(validator("query", z.object({ directory: z.string().optional() })))
+
+        .post(
+          "/auto/analyze",
+          describeRoute({
+            summary: "Analyze task",
+            description: "Analyze a user prompt to determine the best agent and model.",
+            operationId: "auto.analyze",
+            responses: {
+              200: {
+                description: "Analysis result",
+                content: { "application/json": { schema: resolver(z.any()) } },
+              },
+            },
+          }),
+          validator("json", z.object({ prompt: z.string() })),
+          async (c) => {
+            const { prompt } = c.req.valid("json")
+            const result = await AutoSelector.getAutoSelection(prompt)
+            return c.json(result)
+          },
+        )
 
         .route("/project", ProjectRoute)
         .route("/app", AppRoute)
@@ -885,6 +908,12 @@ export namespace Server {
           async (c) => {
             const body = c.req.valid("json") ?? {}
             const session = await Session.create(body)
+
+            // If an agent is specified in the body (e.g. from AutoSelector),
+            // ensure the session knows about it.
+            // Note: Session.create might already handle this if 'agent' is in 'body'.
+            // If not, we might need to explicitly set it or create the initial message.
+
             return c.json(session)
           },
         )

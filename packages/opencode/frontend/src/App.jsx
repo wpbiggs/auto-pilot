@@ -48,18 +48,23 @@ function Sidebar({ isOpen, onToggle, activeView, onViewChange, onNewTask }) {
                 key={item.id}
                 onClick={() => onViewChange(item.id)}
                 className={`w-full text-left p-3 rounded-xl transition-all duration-200 flex items-center gap-3 focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                  activeView === item.id 
-                    ? "bg-blue-600 text-white shadow-md shadow-blue-900/20 translate-x-1" 
+                  activeView === item.id
+                    ? "bg-blue-600 text-white shadow-md shadow-blue-900/20 translate-x-1"
                     : "hover:bg-gray-800 text-gray-400 hover:text-gray-200"
                 }`}
                 aria-current={activeView === item.id ? "page" : undefined}
               >
-                <span className={`text-xl transition-transform ${activeView === item.id ? "scale-110" : ""}`} aria-hidden="true">
+                <span
+                  className={`text-xl transition-transform ${activeView === item.id ? "scale-110" : ""}`}
+                  aria-hidden="true"
+                >
                   {item.icon}
                 </span>
                 <div className="flex-1 min-w-0">
                   <div className={`text-sm ${activeView === item.id ? "font-bold" : "font-medium"}`}>{item.label}</div>
-                  <div className={`text-xs truncate ${activeView === item.id ? "text-blue-100" : "text-gray-500"}`}>{item.description}</div>
+                  <div className={`text-xs truncate ${activeView === item.id ? "text-blue-100" : "text-gray-500"}`}>
+                    {item.description}
+                  </div>
                 </div>
               </button>
             ))}
@@ -84,29 +89,76 @@ function Sidebar({ isOpen, onToggle, activeView, onViewChange, onNewTask }) {
   )
 }
 
-function AutoInterfaceShowcase() {
+function AutoInterfaceShowcase({ onExecute, onViewChange }) {
   const [prompt, setPrompt] = useState("")
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [analysis, setAnalysis] = useState(null)
+  const [isExecuting, setIsExecuting] = useState(false)
+  const [executeError, setExecuteError] = useState("")
 
-  const handleAnalyze = () => {
+  const handleAnalyze = async () => {
     if (!prompt.trim()) return
 
     setIsAnalyzing(true)
 
-    setTimeout(() => {
-      setAnalysis({
-        taskType: "coding",
-        complexity: "medium",
-        confidence: 0.87,
-        agent: "build",
-        model: "claude-3-sonnet",
-        reasoning:
-          "This task involves creating new code, so the build agent is optimal. Sonnet balances speed with accuracy for medium complexity changes.",
+    try {
+      const res = await fetch("/auto/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt }),
       })
+      const data = await res.json()
+      setAnalysis({
+        taskType: data.analysis.taskType,
+        complexity: data.analysis.complexity,
+        confidence: data.analysis.confidence,
+        requiresCode: data.analysis.requiresCode,
+        requiresResearch: data.analysis.requiresResearch,
+        requiresMultipleSteps: data.analysis.requiresMultipleSteps,
+        agent: data.agent,
+        model: data.model.modelID,
+        reasoning: data.analysis.suggestedModel.reasoning,
+        suggestedAgent: data.agent, // Keep track of the resolved agent
+      })
+    } catch (error) {
+      console.error("Analysis failed:", error)
+    } finally {
       setIsAnalyzing(false)
-    }, 1500)
+    }
   }
+
+  const handleExecute = async () => {
+    if (!analysis) return
+    if (!onExecute) return
+
+    setIsExecuting(true)
+    setExecuteError("")
+
+    const result = await onExecute({ prompt, analysis }).catch((error) => ({
+      error: error?.message || "Failed to create item",
+    }))
+
+    setIsExecuting(false)
+
+    if (result?.error) {
+      setExecuteError(result.error)
+      return
+    }
+
+    if (!onViewChange) return
+    if (result?.kind === "task") {
+      onViewChange("kanban")
+      return
+    }
+    if (result?.kind === "idea") {
+      onViewChange("ideation")
+    }
+  }
+
+  const isAction = analysis
+    ? analysis.requiresCode || ["coding", "debugging", "testing", "review"].includes(analysis.taskType)
+    : false
+  const executeLabel = isAction ? "Create Task" : "Capture Idea"
 
   return (
     <div className="space-y-6">
@@ -143,7 +195,21 @@ function AutoInterfaceShowcase() {
 
           {analysis && (
             <div className="mt-6 space-y-4 border-t border-gray-200 pt-6">
-              <h2 className="text-xl font-bold text-gray-900">🎯 Analysis Results</h2>
+              <div className="flex items-center justify-between">
+                <h2 className="text-xl font-bold text-gray-900">🎯 Analysis Results</h2>
+                <button
+                  onClick={handleExecute}
+                  disabled={isExecuting}
+                  className={`bg-green-600 text-white px-4 py-2 rounded-lg font-medium focus:outline-none focus:ring-2 focus:ring-green-500 flex items-center gap-2 ${
+                    isExecuting ? "opacity-60 cursor-not-allowed" : "hover:bg-green-700"
+                  }`}
+                >
+                  <span>{isExecuting ? "⏳" : isAction ? "📌" : "💡"}</span>
+                  {isExecuting ? "Saving..." : executeLabel}
+                </button>
+              </div>
+
+              {executeError && <div className="text-sm text-red-600">{executeError}</div>}
 
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                 <div className="bg-blue-50 p-4 rounded-lg">
@@ -516,7 +582,8 @@ function TaskWizard({ open, onClose, onSubmit }) {
             >
               <option value="backlog">Backlog</option>
               <option value="in_progress">In Progress</option>
-              <option value="review">Review</option>
+              <option value="review">Model Review</option>
+              <option value="human_review">Human Review</option>
               <option value="done">Done</option>
             </select>
             <label htmlFor="wizard-estimate" className="sr-only">
@@ -654,7 +721,8 @@ function TaskEditDialog({ task, onClose, onSave }) {
           >
             <option value="backlog">Backlog</option>
             <option value="in_progress">In Progress</option>
-            <option value="review">Review</option>
+            <option value="review">Model Review</option>
+            <option value="human_review">Human Review</option>
             <option value="done">Done</option>
           </select>
           <label htmlFor="edit-category" className="sr-only">
@@ -748,7 +816,12 @@ function FileDrawer({ task, onClose, directory }) {
   const [content, setContent] = useState("")
   const [error, setError] = useState(null)
   const [loading, setLoading] = useState(false)
-  
+
+  const activity = useMemo(() => {
+    const list = task?.activity ?? []
+    return [...list].sort((a, b) => b.at - a.at)
+  }, [task])
+
   // Ref for focus management
   const drawerRef = useRef(null)
   const closeButtonRef = useRef(null)
@@ -791,19 +864,19 @@ function FileDrawer({ task, onClose, directory }) {
         url.searchParams.set("path", path)
         if (directory) url.searchParams.set("directory", directory)
         const response = await fetch(url.toString())
-        
+
         if (!response.ok) {
-           const err = await response.json().catch(() => ({}))
-           let message = err.message || `Failed to list files: ${response.statusText}`
-           
-           // Strip stack trace if present in message (rare but possible in some dev servers)
-           if (message.includes(" at ")) {
-              message = message.split("\n")[0]
-           }
-           
-           throw new Error(message)
+          const err = await response.json().catch(() => ({}))
+          let message = err.message || `Failed to list files: ${response.statusText}`
+
+          // Strip stack trace if present in message (rare but possible in some dev servers)
+          if (message.includes(" at ")) {
+            message = message.split("\n")[0]
+          }
+
+          throw new Error(message)
         }
-        
+
         const data = await response.json()
         setItems(data)
       } catch (e) {
@@ -831,17 +904,17 @@ function FileDrawer({ task, onClose, directory }) {
       url.searchParams.set("path", item.path)
       if (directory) url.searchParams.set("directory", directory)
       const response = await fetch(url.toString())
-      
+
       if (!response.ok) {
-         const err = await response.json().catch(() => ({}))
-         let message = err.message || `Failed to read file: ${response.statusText}`
-         
-         // Strip stack trace if present
-         if (message.includes(" at ")) {
-            message = message.split("\n")[0]
-         }
-         
-         throw new Error(message)
+        const err = await response.json().catch(() => ({}))
+        let message = err.message || `Failed to read file: ${response.statusText}`
+
+        // Strip stack trace if present
+        if (message.includes(" at ")) {
+          message = message.split("\n")[0]
+        }
+
+        throw new Error(message)
       }
 
       const data = await response.json()
@@ -856,19 +929,19 @@ function FileDrawer({ task, onClose, directory }) {
   }
 
   const handleNavigateUp = () => {
-     if (path === "." || path === "/") return
-     
-     // Normalize to avoid issues with trailing slashes
-     const current = path.replace(/\/+$/, "")
-     if (!current.includes("/")) {
-       setPath(".")
-       return
-     }
+    if (path === "." || path === "/") return
 
-     const parts = current.split("/")
-     parts.pop()
-     const parent = parts.length > 0 ? parts.join("/") : "."
-     setPath(parent)
+    // Normalize to avoid issues with trailing slashes
+    const current = path.replace(/\/+$/, "")
+    if (!current.includes("/")) {
+      setPath(".")
+      return
+    }
+
+    const parts = current.split("/")
+    parts.pop()
+    const parent = parts.length > 0 ? parts.join("/") : "."
+    setPath(parent)
   }
 
   if (!task) return null
@@ -913,23 +986,50 @@ function FileDrawer({ task, onClose, directory }) {
           </div>
         )}
 
+        <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-4">
+          <div className="text-sm font-semibold text-gray-800 mb-2">Task Activity</div>
+          <div className="text-xs text-gray-600 space-y-1">
+            <div>Agent: {task.agent || "Unassigned"}</div>
+            {task.sessionID && <div>Session: {task.sessionID}</div>}
+            {task.summary && <div>Summary: {task.summary}</div>}
+            {task.review?.status && <div>Review: {task.review.status}</div>}
+            {task.review?.prompt && <div>Review Prompt: {task.review.prompt}</div>}
+          </div>
+          {activity.length > 0 ? (
+            <div className="mt-3 space-y-2">
+              {activity.map((entry, index) => (
+                <div key={`${entry.type}-${entry.at}-${index}`} className="text-xs text-gray-600">
+                  <div className="font-medium text-gray-700">
+                    {entry.type} · {entry.status} · {new Date(entry.at).toLocaleString()}
+                  </div>
+                  {entry.actor && <div>Actor: {entry.actor}</div>}
+                  {entry.notes && <div>Notes: {entry.notes}</div>}
+                  {entry.prompt && <div>Prompt: {entry.prompt}</div>}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-xs text-gray-500 mt-2">No activity yet.</div>
+          )}
+        </div>
+
         <div className="grid grid-cols-1 md:grid-cols-[1fr,1.5fr] gap-4 flex-1 overflow-hidden">
           <div className="border border-gray-200 rounded-lg p-3 overflow-y-auto flex flex-col">
             <div className="flex items-center justify-between mb-2">
-               <span className="text-sm font-semibold text-gray-700">Explorer</span>
-               {path !== "." && (
-                 <button 
-                   onClick={handleNavigateUp}
-                   className="text-xs text-blue-600 hover:underline focus:outline-none focus:ring-2 focus:ring-blue-500 rounded px-1"
-                   aria-label="Go up one directory"
-                 >
-                   ⬆ Up
-                 </button>
-               )}
+              <span className="text-sm font-semibold text-gray-700">Explorer</span>
+              {path !== "." && (
+                <button
+                  onClick={handleNavigateUp}
+                  className="text-xs text-blue-600 hover:underline focus:outline-none focus:ring-2 focus:ring-blue-500 rounded px-1"
+                  aria-label="Go up one directory"
+                >
+                  ⬆ Up
+                </button>
+              )}
             </div>
-            
+
             {loading && !items.length ? (
-               <div className="text-sm text-gray-500 animate-pulse">Loading...</div>
+              <div className="text-sm text-gray-500 animate-pulse">Loading...</div>
             ) : (
               <div className="space-y-1" role="list" aria-label="File list">
                 {items.map((item) => (
@@ -937,12 +1037,16 @@ function FileDrawer({ task, onClose, directory }) {
                     key={item.absolute}
                     onClick={() => handleOpen(item)}
                     className={`w-full text-left text-sm px-2 py-1.5 rounded flex items-center gap-2 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                       file?.absolute === item.absolute ? 'bg-blue-50 text-blue-700 ring-1 ring-blue-200' : 'hover:bg-gray-100'
+                      file?.absolute === item.absolute
+                        ? "bg-blue-50 text-blue-700 ring-1 ring-blue-200"
+                        : "hover:bg-gray-100"
                     }`}
                     role="listitem"
                     aria-current={file?.absolute === item.absolute ? "true" : undefined}
                   >
-                    <span aria-hidden="true" className="flex-shrink-0">{item.type === "directory" ? "📁" : "📄"}</span> 
+                    <span aria-hidden="true" className="flex-shrink-0">
+                      {item.type === "directory" ? "📁" : "📄"}
+                    </span>
                     <span className="truncate">{item.name}</span>
                   </button>
                 ))}
@@ -952,19 +1056,29 @@ function FileDrawer({ task, onClose, directory }) {
           </div>
 
           <div className="border border-gray-200 rounded-lg p-3 overflow-y-auto bg-gray-50">
-            {!file && <div className="text-sm text-gray-500 h-full flex items-center justify-center">Select a file to preview.</div>}
+            {!file && (
+              <div className="text-sm text-gray-500 h-full flex items-center justify-center">
+                Select a file to preview.
+              </div>
+            )}
             {file && (
               <div className="h-full flex flex-col">
                 <div className="text-sm font-semibold text-gray-900 mb-2 pb-2 border-b border-gray-200 flex items-center justify-between">
-                   <span className="truncate" title={file.path}>{file.name}</span>
-                   <span className="text-xs text-gray-500 font-normal ml-2 flex-shrink-0">{file.path}</span>
+                  <span className="truncate" title={file.path}>
+                    {file.name}
+                  </span>
+                  <span className="text-xs text-gray-500 font-normal ml-2 flex-shrink-0">{file.path}</span>
                 </div>
                 {loading ? (
-                   <div className="text-sm text-gray-500 animate-pulse">Loading content...</div>
+                  <div className="text-sm text-gray-500 animate-pulse">Loading content...</div>
                 ) : (
-                   <pre className="text-xs whitespace-pre-wrap text-gray-700 font-mono flex-1 overflow-auto" tabIndex="0" aria-label={`Content of ${file.name}`}>
-                     {content}
-                   </pre>
+                  <pre
+                    className="text-xs whitespace-pre-wrap text-gray-700 font-mono flex-1 overflow-auto"
+                    tabIndex="0"
+                    aria-label={`Content of ${file.name}`}
+                  >
+                    {content}
+                  </pre>
                 )}
               </div>
             )}
@@ -975,17 +1089,33 @@ function FileDrawer({ task, onClose, directory }) {
   )
 }
 
-function Kanban({ tasks, onCreate, onMove, onEdit, onFiles, onWizard }) {
+function Kanban({
+  tasks,
+  onCreate,
+  onMove,
+  onEdit,
+  onFiles,
+  onWizard,
+  onStart,
+  onComplete,
+  onReopen,
+  onOpenSession,
+  running,
+  error,
+}) {
   const columns = [
     { id: "backlog", label: "Backlog" },
     { id: "in_progress", label: "In Progress" },
-    { id: "review", label: "Review" },
+    { id: "review", label: "Model Review" },
+    { id: "human_review", label: "Human Review" },
     { id: "done", label: "Done" },
   ]
 
   const [title, setTitle] = useState("")
   const [owner, setOwner] = useState("")
   const [status, setStatus] = useState("backlog")
+  const [dragging, setDragging] = useState("")
+  const [hovered, setHovered] = useState("")
 
   const handleAdd = async () => {
     if (!title.trim()) return
@@ -1005,6 +1135,22 @@ function Kanban({ tasks, onCreate, onMove, onEdit, onFiles, onWizard }) {
     await onMove(taskId, nextStatus)
   }
 
+  const handleDragStart = (taskId) => {
+    setDragging(taskId)
+  }
+
+  const handleDragEnd = () => {
+    setDragging("")
+    setHovered("")
+  }
+
+  const handleDrop = async (statusId) => {
+    if (!dragging) return
+    await onMove(dragging, statusId)
+    setDragging("")
+    setHovered("")
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -1019,6 +1165,8 @@ function Kanban({ tasks, onCreate, onMove, onEdit, onFiles, onWizard }) {
           Open Task Wizard
         </button>
       </div>
+
+      {error && <div className="text-sm text-red-600">{error}</div>}
 
       <div className="bg-white rounded-xl border border-gray-200 shadow-lg p-6">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
@@ -1066,14 +1214,36 @@ function Kanban({ tasks, onCreate, onMove, onEdit, onFiles, onWizard }) {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
         {columns.map((col) => (
-          <div key={col.id} className="bg-gray-50 border border-gray-200 rounded-xl p-4 flex flex-col">
+          <div
+            key={col.id}
+            className={`bg-gray-50 border border-gray-200 rounded-xl p-4 flex flex-col ${
+              hovered === col.id ? "ring-2 ring-blue-200" : ""
+            }`}
+            onDragOver={(event) => event.preventDefault()}
+            onDragEnter={() => setHovered(col.id)}
+            onDragLeave={() => setHovered("")}
+            onDrop={() => handleDrop(col.id)}
+          >
             <div className="flex items-center justify-between mb-3">
-              <h3 className="font-semibold text-gray-900">{col.label}</h3>
-              <span className="text-xs text-gray-600 bg-gray-200 px-2 py-0.5 rounded-full font-medium">
-                {tasks.filter((task) => task.status === col.id).length}
-              </span>
+              <div className="flex items-center gap-2">
+                <span className="h-2 w-2 rounded-full bg-blue-400" aria-hidden="true" />
+                <h3 className="font-semibold text-gray-900">{col.label}</h3>
+              </div>
+              <div className="flex items-center gap-2">
+                {col.id === "backlog" && (
+                  <button
+                    onClick={onWizard}
+                    className="text-xs px-2 py-1 rounded border border-gray-200 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    Add
+                  </button>
+                )}
+                <span className="text-xs text-gray-600 bg-gray-200 px-2 py-0.5 rounded-full font-medium">
+                  {tasks.filter((task) => task.status === col.id).length}
+                </span>
+              </div>
             </div>
             <div className="space-y-3" role="list" aria-label={`${col.label} tasks`}>
               {tasks
@@ -1082,21 +1252,46 @@ function Kanban({ tasks, onCreate, onMove, onEdit, onFiles, onWizard }) {
                   <div
                     key={task.id}
                     role="listitem"
-                    className="bg-white rounded-lg border border-gray-200 p-3 shadow-sm space-y-2 hover:shadow-md transition-shadow"
+                    draggable
+                    onDragStart={() => handleDragStart(task.id)}
+                    onDragEnd={handleDragEnd}
+                    className={`bg-white rounded-lg border border-gray-200 p-3 shadow-sm space-y-2 hover:shadow-md transition-shadow ${
+                      dragging === task.id ? "opacity-50" : ""
+                    }`}
                   >
-                    <div>
-                      <div className="text-sm font-medium text-gray-900">{task.title}</div>
-                      <div className="text-xs text-gray-500 mt-1 flex flex-wrap gap-1">
-                        <span className="bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded">
-                          {task.category ?? "General"}
-                        </span>
-                        <span>·</span>
-                        <span>{task.priority ?? "Normal"}</span>
-                        <span>·</span>
-                        <span>{task.complexity ?? "Medium"}</span>
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="text-sm font-medium text-gray-900">{task.title}</div>
+                        <div className="text-xs text-gray-500 mt-1 flex flex-wrap gap-1">
+                          <span className="bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded">
+                            {task.category ?? "General"}
+                          </span>
+                          <span className="bg-gray-100 text-gray-700 px-1.5 py-0.5 rounded">
+                            {task.priority ?? "Normal"}
+                          </span>
+                          <span className="bg-gray-100 text-gray-700 px-1.5 py-0.5 rounded">
+                            {task.complexity ?? "Medium"}
+                          </span>
+                        </div>
                       </div>
+                      <span className="text-[10px] uppercase tracking-wide px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
+                        {task.status.replace("_", " ")}
+                      </span>
                     </div>
                     {task.owner && <div className="text-xs text-gray-500">Owner: {task.owner}</div>}
+                    {task.review?.status === "pending" && (
+                      <div className="text-xs text-gray-500">Model review pending</div>
+                    )}
+                    {task.review?.notes && task.review?.status !== "pending" && (
+                      <div className="text-xs text-gray-500">Review: {task.review.notes}</div>
+                    )}
+                    {(task.agent || task.sessionID || task.summary) && (
+                      <div className="text-xs text-gray-500 space-y-1">
+                        {task.agent && <div>Agent: {task.agent}</div>}
+                        {task.sessionID && <div>Session: {task.sessionID}</div>}
+                        {task.summary && <div>Summary: {task.summary}</div>}
+                      </div>
+                    )}
                     <div className="flex flex-wrap items-center gap-2 pt-1">
                       <button
                         onClick={() => handleMove(task.id, "back")}
@@ -1114,6 +1309,41 @@ function Kanban({ tasks, onCreate, onMove, onEdit, onFiles, onWizard }) {
                       >
                         ▶
                       </button>
+                      {onStart && ["backlog", "in_progress"].includes(task.status) && (
+                        <button
+                          onClick={() => onStart(task)}
+                          disabled={running?.includes(task.id)}
+                          className={`text-xs px-2 py-1 rounded border border-green-200 text-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 ${
+                            running?.includes(task.id) ? "opacity-60 cursor-not-allowed" : "hover:bg-green-50"
+                          }`}
+                        >
+                          {running?.includes(task.id) ? "Starting..." : "Start"}
+                        </button>
+                      )}
+                      {onComplete && task.status === "human_review" && (
+                        <button
+                          onClick={() => onComplete(task)}
+                          className="text-xs px-2 py-1 rounded border border-emerald-200 text-emerald-700 hover:bg-emerald-50 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                        >
+                          Complete
+                        </button>
+                      )}
+                      {onReopen && task.status === "human_review" && (
+                        <button
+                          onClick={() => onReopen(task)}
+                          className="text-xs px-2 py-1 rounded border border-amber-200 text-amber-700 hover:bg-amber-50 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                        >
+                          Send Back
+                        </button>
+                      )}
+                      {onOpenSession && task.sessionID && (
+                        <button
+                          onClick={() => onOpenSession(task)}
+                          className="text-xs px-2 py-1 rounded border border-gray-200 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        >
+                          Session
+                        </button>
+                      )}
                       <button
                         onClick={() => onEdit(task)}
                         className="text-xs px-2 py-1 rounded border border-blue-200 text-blue-700 hover:bg-blue-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -1130,13 +1360,20 @@ function Kanban({ tasks, onCreate, onMove, onEdit, onFiles, onWizard }) {
                   </div>
                 ))}
             </div>
+            {col.id === "backlog" && (
+              <button
+                onClick={onWizard}
+                className="mt-4 text-xs px-2 py-2 rounded border border-gray-200 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                Add Task
+              </button>
+            )}
           </div>
         ))}
       </div>
     </div>
   )
 }
-
 
 function RoadmapDetailDialog({ feature, onClose, onUpdate, onConvert }) {
   const [notes, setNotes] = useState(feature.notes || "")
@@ -1229,10 +1466,7 @@ function RoadmapDetailDialog({ feature, onClose, onUpdate, onConvert }) {
             ⚡ Convert to Task
           </button>
           <div className="flex gap-2">
-            <button
-              onClick={onClose}
-              className="px-4 py-2 border border-gray-200 rounded-lg text-sm hover:bg-gray-50"
-            >
+            <button onClick={onClose} className="px-4 py-2 border border-gray-200 rounded-lg text-sm hover:bg-gray-50">
               Cancel
             </button>
             <button onClick={handleSave} className="gradient-bg text-white px-4 py-2 rounded-lg text-sm font-medium">
@@ -1313,9 +1547,7 @@ function Roadmap({ roadmap, onCreate, onUpdate, onConvert, onExport, onGenerate,
               key={tab}
               onClick={() => setActiveTab(tab)}
               className={`pb-2 text-sm font-medium capitalize transition-colors ${
-                activeTab === tab
-                  ? "text-blue-600 border-b-2 border-blue-600"
-                  : "text-gray-500 hover:text-gray-700"
+                activeTab === tab ? "text-blue-600 border-b-2 border-blue-600" : "text-gray-500 hover:text-gray-700"
               }`}
             >
               {tab}
@@ -1482,10 +1714,7 @@ function Roadmap({ roadmap, onCreate, onUpdate, onConvert, onExport, onGenerate,
               Include competitor analysis
             </label>
             <div className="flex justify-end gap-2 pt-2">
-              <button
-                onClick={() => setGenOpen(false)}
-                className="px-3 py-2 border border-gray-200 rounded-lg text-sm"
-              >
+              <button onClick={() => setGenOpen(false)} className="px-3 py-2 border border-gray-200 rounded-lg text-sm">
                 Cancel
               </button>
               <button
@@ -1517,28 +1746,42 @@ function Roadmap({ roadmap, onCreate, onUpdate, onConvert, onExport, onGenerate,
 
 function RoadmapCard({ feature, onClick, onUpdate }) {
   return (
-    <div onClick={onClick} className="bg-white rounded-lg border border-gray-200 p-3 shadow-sm hover:shadow-md transition-shadow cursor-pointer group">
+    <div
+      onClick={onClick}
+      className="bg-white rounded-lg border border-gray-200 p-3 shadow-sm hover:shadow-md transition-shadow cursor-pointer group"
+    >
       <div className="flex justify-between items-start mb-2">
         <div className="text-sm font-medium text-gray-900 leading-tight">{feature.title}</div>
         {feature.priority && (
-            <span className={`text-[10px] uppercase font-bold px-1.5 py-0.5 rounded ${
-                feature.priority === 'Critical' ? 'bg-red-100 text-red-700' :
-                feature.priority === 'High' ? 'bg-orange-100 text-orange-700' :
-                'bg-gray-100 text-gray-600'
-            }`}>{feature.priority}</span>
+          <span
+            className={`text-[10px] uppercase font-bold px-1.5 py-0.5 rounded ${
+              feature.priority === "Critical"
+                ? "bg-red-100 text-red-700"
+                : feature.priority === "High"
+                  ? "bg-orange-100 text-orange-700"
+                  : "bg-gray-100 text-gray-600"
+            }`}
+          >
+            {feature.priority}
+          </span>
         )}
       </div>
       <div className="flex items-center justify-between mt-2">
-         <StatusBadge status={feature.status} />
-         <div className="opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
-             {feature.status !== 'done' && (
-                 <button 
-                    onClick={(e) => { e.stopPropagation(); onUpdate(feature.id, { status: 'done' }) }}
-                    className="text-xs p-1 text-green-600 hover:bg-green-50 rounded" title="Mark Done">
-                    ✓
-                 </button>
-             )}
-         </div>
+        <StatusBadge status={feature.status} />
+        <div className="opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
+          {feature.status !== "done" && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                onUpdate(feature.id, { status: "done" })
+              }}
+              className="text-xs p-1 text-green-600 hover:bg-green-50 rounded"
+              title="Mark Done"
+            >
+              ✓
+            </button>
+          )}
+        </div>
       </div>
     </div>
   )
@@ -1549,7 +1792,7 @@ function StatusBadge({ status }) {
     done: "bg-green-100 text-green-700",
     in_progress: "bg-blue-100 text-blue-700",
     planned: "bg-gray-100 text-gray-700",
-    backlog: "bg-gray-100 text-gray-500"
+    backlog: "bg-gray-100 text-gray-500",
   }
   return (
     <span className={`text-xs px-2 py-0.5 rounded-full capitalize ${styles[status] || styles.planned}`}>
@@ -1557,7 +1800,6 @@ function StatusBadge({ status }) {
     </span>
   )
 }
-
 
 function Ideation({ ideas, onCreate, onStatus, onConvert, onGenerate, onViewLogs, generating }) {
   const types = [
@@ -1733,7 +1975,9 @@ function Ideation({ ideas, onCreate, onStatus, onConvert, onGenerate, onViewLogs
                     <span>·</span>
                     <span className="capitalize">{idea.impact} Impact</span>
                   </div>
-                  {idea.taskID && <div className="text-xs text-blue-600 mt-1 font-medium">Linked Task: {idea.taskID}</div>}
+                  {idea.taskID && (
+                    <div className="text-xs text-blue-600 mt-1 font-medium">Linked Task: {idea.taskID}</div>
+                  )}
                 </div>
                 <IdeaStatusBadge status={idea.status} />
               </div>
@@ -1741,35 +1985,43 @@ function Ideation({ ideas, onCreate, onStatus, onConvert, onGenerate, onViewLogs
                 {types.find((item) => item.id === idea.type)?.hint}
               </div>
             </div>
-            
+
             <div className="flex flex-wrap items-center gap-2 mt-4 pt-2 border-t border-gray-100">
-              {idea.status !== 'converted' && idea.status !== 'archived' && (
-                 <button
-                    onClick={() => onConvert(idea.id)}
-                    className="text-xs px-2 py-1 rounded border border-blue-200 text-blue-700 hover:bg-blue-50 font-medium"
-                 >
-                    ⚡ Convert
-                 </button>
+              {idea.status !== "converted" && idea.status !== "archived" && (
+                <button
+                  onClick={() => onConvert(idea.id)}
+                  className="text-xs px-2 py-1 rounded border border-blue-200 text-blue-700 hover:bg-blue-50 font-medium"
+                >
+                  ⚡ Convert
+                </button>
               )}
-              {idea.status === 'dismissed' ? (
-                <button onClick={() => onStatus(idea.id, "active")} className="text-xs px-2 py-1 rounded border border-gray-200 hover:bg-gray-100">
+              {idea.status === "dismissed" ? (
+                <button
+                  onClick={() => onStatus(idea.id, "active")}
+                  className="text-xs px-2 py-1 rounded border border-gray-200 hover:bg-gray-100"
+                >
                   Restore
                 </button>
               ) : (
-                <button onClick={() => onStatus(idea.id, "dismissed")} className="text-xs px-2 py-1 rounded border border-gray-200 hover:bg-gray-100">
+                <button
+                  onClick={() => onStatus(idea.id, "dismissed")}
+                  className="text-xs px-2 py-1 rounded border border-gray-200 hover:bg-gray-100"
+                >
                   Dismiss
                 </button>
               )}
               <button
-                onClick={() => onStatus(idea.id, idea.status === 'archived' ? 'active' : 'archived')}
+                onClick={() => onStatus(idea.id, idea.status === "archived" ? "active" : "archived")}
                 className="text-xs px-2 py-1 rounded border border-gray-200 hover:bg-gray-100"
               >
-                {idea.status === 'archived' ? 'Unarchive' : 'Archive'}
+                {idea.status === "archived" ? "Unarchive" : "Archive"}
               </button>
             </div>
           </div>
         ))}
-        {visible.length === 0 && <div className="col-span-full text-center py-8 text-gray-500">No ideas found matching filters.</div>}
+        {visible.length === 0 && (
+          <div className="col-span-full text-center py-8 text-gray-500">No ideas found matching filters.</div>
+        )}
       </div>
 
       {genOpen && (
@@ -1788,7 +2040,10 @@ function Ideation({ ideas, onCreate, onStatus, onConvert, onGenerate, onViewLogs
             <div className="text-sm text-gray-600">Select idea types to generate.</div>
             <div className="flex flex-wrap gap-2 text-xs text-gray-600">
               {types.map((item) => (
-                <label key={item.id} className="flex items-center gap-2 bg-gray-50 px-3 py-2 rounded-lg cursor-pointer hover:bg-gray-100">
+                <label
+                  key={item.id}
+                  className="flex items-center gap-2 bg-gray-50 px-3 py-2 rounded-lg cursor-pointer hover:bg-gray-100"
+                >
                   <input
                     type="checkbox"
                     checked={selectedTypes.includes(item.id)}
@@ -1800,15 +2055,15 @@ function Ideation({ ideas, onCreate, onStatus, onConvert, onGenerate, onViewLogs
               ))}
             </div>
             <div>
-                 <label className="text-xs text-gray-500 block mb-1">Max ideas to generate</label>
-                 <input
-                    type="number"
-                    value={maxIdeas}
-                    onChange={(e) => setMaxIdeas(e.target.value)}
-                    className="border border-gray-300 rounded px-2 py-1 text-sm w-20"
-                    min="1"
-                    max="20"
-                 />
+              <label className="text-xs text-gray-500 block mb-1">Max ideas to generate</label>
+              <input
+                type="number"
+                value={maxIdeas}
+                onChange={(e) => setMaxIdeas(e.target.value)}
+                className="border border-gray-300 rounded px-2 py-1 text-sm w-20"
+                min="1"
+                max="20"
+              />
             </div>
             <div className="flex items-center justify-end gap-2 pt-2">
               <button
@@ -1849,17 +2104,17 @@ function Ideation({ ideas, onCreate, onStatus, onConvert, onGenerate, onViewLogs
 }
 
 function IdeaStatusBadge({ status }) {
-    const styles = {
-        active: "bg-green-100 text-green-700",
-        dismissed: "bg-gray-100 text-gray-500",
-        converted: "bg-blue-100 text-blue-700",
-        archived: "bg-gray-200 text-gray-600"
-    }
-    return (
-        <span className={`text-xs px-2 py-0.5 rounded-full font-medium capitalize ${styles[status] || styles.active}`}>
-            {status}
-        </span>
-    )
+  const styles = {
+    active: "bg-green-100 text-green-700",
+    dismissed: "bg-gray-100 text-gray-500",
+    converted: "bg-blue-100 text-blue-700",
+    archived: "bg-gray-200 text-gray-600",
+  }
+  return (
+    <span className={`text-xs px-2 py-0.5 rounded-full font-medium capitalize ${styles[status] || styles.active}`}>
+      {status}
+    </span>
+  )
 }
 
 function Context({ memories, indexItems, onAddMemory, onSearchIndex, onSearchMemories }) {
@@ -1927,9 +2182,7 @@ function Context({ memories, indexItems, onAddMemory, onSearchIndex, onSearchMem
           <button
             onClick={() => setActiveTab("index")}
             className={`pb-2 text-sm font-medium capitalize transition-colors ${
-              activeTab === "index"
-                ? "text-blue-600 border-b-2 border-blue-600"
-                : "text-gray-500 hover:text-gray-700"
+              activeTab === "index" ? "text-blue-600 border-b-2 border-blue-600" : "text-gray-500 hover:text-gray-700"
             }`}
           >
             Project Index
@@ -2052,7 +2305,8 @@ function Context({ memories, indexItems, onAddMemory, onSearchIndex, onSearchMem
                         {item.tag || "general"}
                       </span>
                       <span className="text-xs text-gray-400">
-                        {new Date(item.createdAt).toLocaleDateString()} at {new Date(item.createdAt).toLocaleTimeString()}
+                        {new Date(item.createdAt).toLocaleDateString()} at{" "}
+                        {new Date(item.createdAt).toLocaleTimeString()}
                       </span>
                     </div>
                   </div>
@@ -2184,13 +2438,20 @@ function Insights({
           <div className="space-y-2" role="list" aria-label="Chat sessions">
             {sessions.map((session) => {
               const status = statusMap?.[session.id]?.type ?? "idle"
-              const statusColor = status === "running" ? "bg-green-100 text-green-700" : status === "error" ? "bg-red-100 text-red-700" : "bg-gray-100 text-gray-600"
+              const statusColor =
+                status === "running"
+                  ? "bg-green-100 text-green-700"
+                  : status === "error"
+                    ? "bg-red-100 text-red-700"
+                    : "bg-gray-100 text-gray-600"
               return (
                 <div
                   key={session.id}
                   role="listitem"
                   className={`flex items-center gap-2 w-full p-2 rounded-lg text-sm transition-colors ${
-                    activeSession === session.id ? "bg-blue-50 text-blue-700 font-medium" : "hover:bg-gray-50 text-gray-700"
+                    activeSession === session.id
+                      ? "bg-blue-50 text-blue-700 font-medium"
+                      : "hover:bg-gray-50 text-gray-700"
                   }`}
                 >
                   <button
@@ -2257,7 +2518,9 @@ function Insights({
               <div
                 key={item.id}
                 className={`rounded-lg p-3 text-sm max-w-[90%] ${
-                  item.role === "user" ? "bg-blue-50 ml-auto border border-blue-100" : "bg-gray-50 border border-gray-100"
+                  item.role === "user"
+                    ? "bg-blue-50 ml-auto border border-blue-100"
+                    : "bg-gray-50 border border-gray-100"
                 }`}
               >
                 <div className="text-xs text-gray-500 mb-1 uppercase tracking-wider">{item.role}</div>
@@ -2575,15 +2838,14 @@ function ProjectHub({
       return
     }
     const timer = setTimeout(() => {
-       const url = new URL("/find/file", window.location.origin)
-       url.searchParams.set("query", browseQuery)
-       url.searchParams.set("dirs", "true")
-       url.searchParams.set("type", "directory")
-       url.searchParams.set("limit", "25")
-       if (directory) url.searchParams.set("directory", directory)
-       setBrowseLoading(true)
-       fetch(url.toString())
-
+      const url = new URL("/find/file", window.location.origin)
+      url.searchParams.set("query", browseQuery)
+      url.searchParams.set("dirs", "true")
+      url.searchParams.set("type", "directory")
+      url.searchParams.set("limit", "25")
+      if (directory) url.searchParams.set("directory", directory)
+      setBrowseLoading(true)
+      fetch(url.toString())
         .then((response) => response.json())
         .then((data) => {
           setBrowseResults(Array.isArray(data) ? data : [])
@@ -2628,7 +2890,9 @@ function ProjectHub({
   const ProjectCard = ({ project, active }) => (
     <div
       className={`p-4 rounded-xl border transition-all duration-200 ${
-        active ? "bg-blue-50 border-blue-200 shadow-sm ring-1 ring-blue-100" : "bg-white border-gray-200 shadow-sm hover:shadow-md"
+        active
+          ? "bg-blue-50 border-blue-200 shadow-sm ring-1 ring-blue-100"
+          : "bg-white border-gray-200 shadow-sm hover:shadow-md"
       }`}
     >
       <div className="flex justify-between items-start mb-3">
@@ -2645,28 +2909,28 @@ function ProjectHub({
         </div>
         <div className="text-2xl opacity-20">🗂️</div>
       </div>
-      
+
       <div className="flex items-center gap-2 pt-2 mt-2 border-t border-gray-100">
-         <button
-            onClick={() => onSelectProject(project)}
-            disabled={active}
-            className={`flex-1 text-xs font-medium py-1.5 rounded-lg transition-colors ${
-               active 
-                ? "bg-blue-100 text-blue-700 cursor-default" 
-                : "bg-gray-100 text-gray-700 hover:bg-gray-200 hover:text-gray-900"
-            }`}
-          >
-            {active ? "Currently Open" : "Open Project"}
-          </button>
-          <button
-            onClick={() => {
-              setEdit(project)
-              setEditName(project.name ?? "")
-            }}
-            className="px-3 py-1.5 text-xs font-medium text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
-          >
-            Rename
-          </button>
+        <button
+          onClick={() => onSelectProject(project)}
+          disabled={active}
+          className={`flex-1 text-xs font-medium py-1.5 rounded-lg transition-colors ${
+            active
+              ? "bg-blue-100 text-blue-700 cursor-default"
+              : "bg-gray-100 text-gray-700 hover:bg-gray-200 hover:text-gray-900"
+          }`}
+        >
+          {active ? "Currently Open" : "Open Project"}
+        </button>
+        <button
+          onClick={() => {
+            setEdit(project)
+            setEditName(project.name ?? "")
+          }}
+          className="px-3 py-1.5 text-xs font-medium text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+        >
+          Rename
+        </button>
       </div>
     </div>
   )
@@ -2679,7 +2943,7 @@ function ProjectHub({
           <p className="text-gray-600">Manage projects, sandboxes, and file navigation.</p>
           <p className="text-xs text-gray-500 mt-1">Active directory: {directory || "current workspace"}</p>
         </div>
-        
+
         <div className="flex bg-gray-100 p-1 rounded-lg">
           {tabs.map((item) => (
             <button
@@ -2697,367 +2961,374 @@ function ProjectHub({
 
       {tab === "projects" && (
         <div className="space-y-6">
-           <div className="flex items-center justify-between">
-              <h3 className="text-lg font-bold text-gray-900">Available Projects</h3>
-              <div className="flex gap-2">
-                 <button
-                  onClick={() => setGitOpen(true)}
-                  className="text-sm px-3 py-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
-                >
-                  Configure Git
-                </button>
-                <button
-                  onClick={() => setAddOpen(true)}
-                  className="gradient-bg text-white px-4 py-2 rounded-lg text-sm font-medium shadow-sm hover:opacity-90 transition-opacity"
-                >
-                  + New Project
-                </button>
-              </div>
-           </div>
+          <div className="flex items-center justify-between">
+            <h3 className="text-lg font-bold text-gray-900">Available Projects</h3>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setGitOpen(true)}
+                className="text-sm px-3 py-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                Configure Git
+              </button>
+              <button
+                onClick={() => setAddOpen(true)}
+                className="gradient-bg text-white px-4 py-2 rounded-lg text-sm font-medium shadow-sm hover:opacity-90 transition-opacity"
+              >
+                + New Project
+              </button>
+            </div>
+          </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {projects.map((project) => {
               const active = current?.id === project.id || project.worktree === directory
               return <ProjectCard key={project.id} project={project} active={active} />
             })}
-             {projects.length === 0 && (
-                <div className="col-span-full py-12 text-center bg-gray-50 rounded-xl border border-dashed border-gray-200">
-                  <div className="text-4xl mb-3 opacity-20">📂</div>
-                  <p className="text-gray-500 font-medium">No projects found</p>
-                  <button 
-                    onClick={() => setAddOpen(true)}
-                    className="mt-2 text-blue-600 hover:underline text-sm"
-                  >
-                    Add your first project
-                  </button>
-                </div>
-             )}
+            {projects.length === 0 && (
+              <div className="col-span-full py-12 text-center bg-gray-50 rounded-xl border border-dashed border-gray-200">
+                <div className="text-4xl mb-3 opacity-20">📂</div>
+                <p className="text-gray-500 font-medium">No projects found</p>
+                <button onClick={() => setAddOpen(true)} className="mt-2 text-blue-600 hover:underline text-sm">
+                  Add your first project
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}
 
       {tab === "worktrees" && (
         <div className="space-y-6">
-           <div className="flex items-center justify-between">
-              <h3 className="text-lg font-bold text-gray-900">Active Worktrees</h3>
-              <button
-                onClick={() => setWorkOpen(true)}
-                 className="gradient-bg text-white px-4 py-2 rounded-lg text-sm font-medium shadow-sm hover:opacity-90 transition-opacity"
-              >
-                + Create Worktree
-              </button>
-           </div>
-           
-           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-lg font-bold text-gray-900">Active Worktrees</h3>
+            <button
+              onClick={() => setWorkOpen(true)}
+              className="gradient-bg text-white px-4 py-2 rounded-lg text-sm font-medium shadow-sm hover:opacity-90 transition-opacity"
+            >
+              + Create Worktree
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {worktrees.map((tree) => (
-               <div key={tree} className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                     <div className="bg-purple-100 text-purple-600 p-2 rounded-lg">🌿</div>
-                     <span className="font-mono text-sm text-gray-700">{tree}</span>
-                  </div>
-                   <div className="text-xs text-green-600 bg-green-50 px-2 py-1 rounded font-medium">Ready</div>
-               </div>
+              <div
+                key={tree}
+                className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm flex items-center justify-between"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="bg-purple-100 text-purple-600 p-2 rounded-lg">🌿</div>
+                  <span className="font-mono text-sm text-gray-700">{tree}</span>
+                </div>
+                <div className="text-xs text-green-600 bg-green-50 px-2 py-1 rounded font-medium">Ready</div>
+              </div>
             ))}
             {worktrees.length === 0 && (
-                <div className="col-span-full py-12 text-center bg-gray-50 rounded-xl border border-dashed border-gray-200">
-                   <p className="text-gray-500 italic">No active worktrees.</p>
-                </div>
+              <div className="col-span-full py-12 text-center bg-gray-50 rounded-xl border border-dashed border-gray-200">
+                <p className="text-gray-500 italic">No active worktrees.</p>
+              </div>
             )}
           </div>
-          
-           {workOpen && (
-              <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 max-w-2xl">
-                 <h4 className="font-bold text-gray-900 mb-4">Create New Worktree</h4>
-                 <div className="space-y-4">
-                    <div>
-                       <label className="block text-xs font-medium text-gray-500 mb-1">Branch Name</label>
-                       <input
-                          value={workName}
-                          onChange={(e) => setWorkName(e.target.value)}
-                          placeholder="e.g. feature/new-login"
-                          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                       />
-                    </div>
-                    <div>
-                       <label className="block text-xs font-medium text-gray-500 mb-1">Start Point (Optional)</label>
-                       <input
-                          value={workStart}
-                          onChange={(e) => setWorkStart(e.target.value)}
-                          placeholder="e.g. main or commit hash"
-                          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                       />
-                    </div>
-                    <div className="flex justify-end gap-2 pt-2">
-                       <button
-                          onClick={() => setWorkOpen(false)}
-                          className="px-4 py-2 border border-gray-200 rounded-lg text-sm font-medium hover:bg-gray-50"
-                       >
-                          Cancel
-                       </button>
-                       <button
-                          onClick={handleWorktree}
-                           className="gradient-bg text-white px-4 py-2 rounded-lg text-sm font-medium shadow-sm hover:opacity-90"
-                       >
-                          Create
-                       </button>
-                    </div>
-                 </div>
+
+          {workOpen && (
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 max-w-2xl">
+              <h4 className="font-bold text-gray-900 mb-4">Create New Worktree</h4>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">Branch Name</label>
+                  <input
+                    value={workName}
+                    onChange={(e) => setWorkName(e.target.value)}
+                    placeholder="e.g. feature/new-login"
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">Start Point (Optional)</label>
+                  <input
+                    value={workStart}
+                    onChange={(e) => setWorkStart(e.target.value)}
+                    placeholder="e.g. main or commit hash"
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div className="flex justify-end gap-2 pt-2">
+                  <button
+                    onClick={() => setWorkOpen(false)}
+                    className="px-4 py-2 border border-gray-200 rounded-lg text-sm font-medium hover:bg-gray-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleWorktree}
+                    className="gradient-bg text-white px-4 py-2 rounded-lg text-sm font-medium shadow-sm hover:opacity-90"
+                  >
+                    Create
+                  </button>
+                </div>
               </div>
-           )}
+            </div>
+          )}
         </div>
       )}
 
       {tab === "files" && (
         <div className="flex flex-col h-[600px] bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-           {/* File Browser Toolbar */}
+          {/* File Browser Toolbar */}
           <div className="flex items-center gap-2 p-3 border-b border-gray-200 bg-gray-50">
-             <div className="flex gap-1">
-                <button
-                  onClick={() => onSetPath(up)}
-                  className="p-1.5 text-gray-500 hover:text-gray-700 hover:bg-gray-200 rounded-md transition-colors"
-                  title="Go Up"
-                >
-                  ⬆
-                </button>
-                <button
-                  onClick={() => onBrowse(filePath)}
-                  className="p-1.5 text-gray-500 hover:text-gray-700 hover:bg-gray-200 rounded-md transition-colors"
-                  title="Refresh"
-                >
-                  🔄
-                </button>
-             </div>
-             
-             <div className="flex-1 relative">
-                <input
-                   value={filePath}
-                   onChange={(e) => onSetPath(e.target.value)}
-                   className="w-full pl-8 pr-4 py-1.5 text-sm font-mono border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-                <span className="absolute left-2.5 top-1.5 text-gray-400 text-sm">/</span>
-             </div>
+            <div className="flex gap-1">
+              <button
+                onClick={() => onSetPath(up)}
+                className="p-1.5 text-gray-500 hover:text-gray-700 hover:bg-gray-200 rounded-md transition-colors"
+                title="Go Up"
+              >
+                ⬆
+              </button>
+              <button
+                onClick={() => onBrowse(filePath)}
+                className="p-1.5 text-gray-500 hover:text-gray-700 hover:bg-gray-200 rounded-md transition-colors"
+                title="Refresh"
+              >
+                🔄
+              </button>
+            </div>
+
+            <div className="flex-1 relative">
+              <input
+                value={filePath}
+                onChange={(e) => onSetPath(e.target.value)}
+                className="w-full pl-8 pr-4 py-1.5 text-sm font-mono border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <span className="absolute left-2.5 top-1.5 text-gray-400 text-sm">/</span>
+            </div>
           </div>
 
           <div className="flex-1 flex overflow-hidden">
             {/* File List */}
             <div className="w-1/3 border-r border-gray-200 overflow-y-auto p-2 bg-gray-50/50">
-               {files.map((item) => (
-                 <button
-                   key={item.absolute}
-                   onClick={() => {
-                     if (item.type === "directory") onSetPath(item.path)
-                     if (item.type === "file") setFocus(item)
-                   }}
-                   className={`w-full text-left text-sm px-3 py-2 rounded-md flex items-center gap-2 mb-1 transition-colors ${
-                     focus?.absolute === item.absolute 
-                       ? "bg-blue-100 text-blue-700 font-medium" 
-                       : "hover:bg-gray-100 text-gray-700"
-                   }`}
-                 >
-                   <span className="opacity-70">{item.type === "directory" ? "📁" : "📄"}</span>
-                   <span className="truncate font-mono text-xs">{item.name}</span>
-                 </button>
-               ))}
-               {files.length === 0 && (
-                  <div className="text-sm text-gray-400 italic text-center py-8">Empty directory</div>
-               )}
+              {files.map((item) => (
+                <button
+                  key={item.absolute}
+                  onClick={() => {
+                    if (item.type === "directory") onSetPath(item.path)
+                    if (item.type === "file") setFocus(item)
+                  }}
+                  className={`w-full text-left text-sm px-3 py-2 rounded-md flex items-center gap-2 mb-1 transition-colors ${
+                    focus?.absolute === item.absolute
+                      ? "bg-blue-100 text-blue-700 font-medium"
+                      : "hover:bg-gray-100 text-gray-700"
+                  }`}
+                >
+                  <span className="opacity-70">{item.type === "directory" ? "📁" : "📄"}</span>
+                  <span className="truncate font-mono text-xs">{item.name}</span>
+                </button>
+              ))}
+              {files.length === 0 && (
+                <div className="text-sm text-gray-400 italic text-center py-8">Empty directory</div>
+              )}
             </div>
-            
+
             {/* Preview Pane */}
             <div className="flex-1 bg-white overflow-hidden flex flex-col">
-               {focus ? (
-                  <>
-                     <div className="px-4 py-2 border-b border-gray-100 text-xs font-mono text-gray-500 bg-gray-50">
-                        {focus.path}
-                     </div>
-                     <div className="flex-1 overflow-auto p-4">
-                        <pre className="text-xs font-mono text-gray-800 whitespace-pre-wrap">{preview}</pre>
-                     </div>
-                  </>
-               ) : (
-                  <div className="flex flex-col items-center justify-center h-full text-gray-300">
-                     <span className="text-5xl mb-2">👁️</span>
-                     <span className="text-sm font-medium">Select a file to preview</span>
+              {focus ? (
+                <>
+                  <div className="px-4 py-2 border-b border-gray-100 text-xs font-mono text-gray-500 bg-gray-50">
+                    {focus.path}
                   </div>
-               )}
+                  <div className="flex-1 overflow-auto p-4">
+                    <pre className="text-xs font-mono text-gray-800 whitespace-pre-wrap">{preview}</pre>
+                  </div>
+                </>
+              ) : (
+                <div className="flex flex-col items-center justify-center h-full text-gray-300">
+                  <span className="text-5xl mb-2">👁️</span>
+                  <span className="text-sm font-medium">Select a file to preview</span>
+                </div>
+              )}
             </div>
           </div>
         </div>
       )}
 
-        {addOpen && (
-          <div
-            className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4 backdrop-blur-sm"
-            role="dialog"
-            aria-modal="true"
-          >
-            <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 space-y-4">
-              <div className="flex items-center justify-between">
-                <h3 className="text-lg font-bold text-gray-900">Add Project</h3>
-                <button onClick={() => setAddOpen(false)} className="text-gray-400 hover:text-gray-600">✕</button>
-              </div>
-              
-              <div className="space-y-4">
-                 <div>
-                    <label className="block text-xs font-medium text-gray-500 mb-1">Directory Path</label>
-                    <div className="flex gap-2">
-                       <input
-                          value={dir}
-                          onChange={(e) => setDir(e.target.value)}
-                          placeholder="/path/to/project"
-                          className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                       />
-                       <button
-                          onClick={() => {
-                             setBrowseQuery(dir)
-                             setBrowseOpen(true)
-                          }}
-                          className="px-3 py-2 bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200 text-sm font-medium"
-                       >
-                          Browse
-                       </button>
-                    </div>
-                 </div>
-                 
-                 <div>
-                    <label className="block text-xs font-medium text-gray-500 mb-1">Project Name (Optional)</label>
-                    <input
-                       value={name}
-                       onChange={(e) => setName(e.target.value)}
-                       placeholder="My Awesome Project"
-                       className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                 </div>
+      {addOpen && (
+        <div
+          className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4 backdrop-blur-sm"
+          role="dialog"
+          aria-modal="true"
+        >
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-bold text-gray-900">Add Project</h3>
+              <button onClick={() => setAddOpen(false)} className="text-gray-400 hover:text-gray-600">
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">Directory Path</label>
+                <div className="flex gap-2">
+                  <input
+                    value={dir}
+                    onChange={(e) => setDir(e.target.value)}
+                    placeholder="/path/to/project"
+                    className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  <button
+                    onClick={() => {
+                      setBrowseQuery(dir)
+                      setBrowseOpen(true)
+                    }}
+                    className="px-3 py-2 bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200 text-sm font-medium"
+                  >
+                    Browse
+                  </button>
+                </div>
               </div>
 
-              <div className="flex justify-end gap-2 pt-4 border-t border-gray-100">
-                <button
-                  onClick={() => setAddOpen(false)}
-                  className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg text-sm font-medium"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleAdd}
-                  className="gradient-bg text-white px-4 py-2 rounded-lg text-sm font-medium hover:opacity-90"
-                >
-                  Add Project
-                </button>
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">Project Name (Optional)</label>
+                <input
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="My Awesome Project"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
               </div>
             </div>
-          </div>
-        )}
-        
-        {browseOpen && (
-          <div
-            className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4 backdrop-blur-sm"
-            role="dialog"
-            aria-modal="true"
-          >
-            <div className="bg-white rounded-xl shadow-xl w-full max-w-lg p-6 space-y-4">
-              <div className="flex items-center justify-between">
-                <h3 className="text-lg font-bold text-gray-900">Browse Directories</h3>
-                <button onClick={() => setBrowseOpen(false)} className="text-gray-400 hover:text-gray-600">✕</button>
-              </div>
-              
-              <input
-                value={browseQuery}
-                onChange={(e) => setBrowseQuery(e.target.value)}
-                placeholder="Search paths..."
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                autoFocus
-              />
-              
-              <div className="border border-gray-200 rounded-lg max-h-64 overflow-y-auto divide-y divide-gray-100">
-                 {browseLoading && <div className="p-4 text-center text-gray-500 text-sm">Searching...</div>}
-                 
-                 {!browseLoading && browseResults.map((item) => {
-                    const path = item.path ?? item.absolute ?? item
-                    return (
-                       <button
-                          key={path}
-                          onClick={() => {
-                             setDir(path)
-                             setBrowseOpen(false)
-                          }}
-                          className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 font-mono truncate"
-                       >
-                          📁 {path}
-                       </button>
-                    )
-                 })}
-                 
-                 {!browseLoading && browseResults.length === 0 && (
-                    <div className="p-4 text-center text-gray-400 text-sm italic">No directories found</div>
-                 )}
-              </div>
-              
-              <div className="flex justify-end">
-                 <button
-                    onClick={() => setBrowseOpen(false)}
-                    className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg text-sm font-medium"
-                 >
-                    Close
-                 </button>
-              </div>
+
+            <div className="flex justify-end gap-2 pt-4 border-t border-gray-100">
+              <button
+                onClick={() => setAddOpen(false)}
+                className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg text-sm font-medium"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleAdd}
+                className="gradient-bg text-white px-4 py-2 rounded-lg text-sm font-medium hover:opacity-90"
+              >
+                Add Project
+              </button>
             </div>
           </div>
-        )}
-        
-        {/* Edit Modal (Rename) */}
-        {edit && (
-           <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-              <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6 space-y-4">
-                 <h3 className="text-lg font-bold text-gray-900">Rename Project</h3>
-                 <input
-                    value={editName}
-                    onChange={(e) => setEditName(e.target.value)}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                 />
-                 <div className="flex justify-end gap-2">
+        </div>
+      )}
+
+      {browseOpen && (
+        <div
+          className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4 backdrop-blur-sm"
+          role="dialog"
+          aria-modal="true"
+        >
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-lg p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-bold text-gray-900">Browse Directories</h3>
+              <button onClick={() => setBrowseOpen(false)} className="text-gray-400 hover:text-gray-600">
+                ✕
+              </button>
+            </div>
+
+            <input
+              value={browseQuery}
+              onChange={(e) => setBrowseQuery(e.target.value)}
+              placeholder="Search paths..."
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              autoFocus
+            />
+
+            <div className="border border-gray-200 rounded-lg max-h-64 overflow-y-auto divide-y divide-gray-100">
+              {browseLoading && <div className="p-4 text-center text-gray-500 text-sm">Searching...</div>}
+
+              {!browseLoading &&
+                browseResults.map((item) => {
+                  const path = item.path ?? item.absolute ?? item
+                  return (
                     <button
-                       onClick={() => setEdit(null)}
-                       className="px-3 py-2 text-gray-600 hover:bg-gray-100 rounded-lg text-sm"
+                      key={path}
+                      onClick={() => {
+                        setDir(path)
+                        setBrowseOpen(false)
+                      }}
+                      className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 font-mono truncate"
                     >
-                       Cancel
+                      📁 {path}
                     </button>
-                    <button
-                       onClick={handleRename}
-                       className="gradient-bg text-white px-4 py-2 rounded-lg text-sm font-medium"
-                    >
-                       Save
-                    </button>
-                 </div>
+                  )
+                })}
+
+              {!browseLoading && browseResults.length === 0 && (
+                <div className="p-4 text-center text-gray-400 text-sm italic">No directories found</div>
+              )}
+            </div>
+
+            <div className="flex justify-end">
+              <button
+                onClick={() => setBrowseOpen(false)}
+                className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg text-sm font-medium"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Modal (Rename) */}
+      {edit && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6 space-y-4">
+            <h3 className="text-lg font-bold text-gray-900">Rename Project</h3>
+            <input
+              value={editName}
+              onChange={(e) => setEditName(e.target.value)}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setEdit(null)}
+                className="px-3 py-2 text-gray-600 hover:bg-gray-100 rounded-lg text-sm"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleRename}
+                className="gradient-bg text-white px-4 py-2 rounded-lg text-sm font-medium"
+              >
+                Save
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {gitOpen && (
+        <div
+          className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4 backdrop-blur-sm"
+          role="dialog"
+          aria-modal="true"
+        >
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-bold text-gray-900">Git Setup</h3>
+              <button onClick={() => setGitOpen(false)} className="text-gray-400 hover:text-gray-600">
+                ✕
+              </button>
+            </div>
+            <div className="space-y-4">
+              <div className="bg-gray-50 p-3 rounded-lg border border-gray-200">
+                <div className="text-xs font-bold text-gray-700 uppercase mb-2">Initialize Repo</div>
+                <code className="text-xs font-mono bg-white p-2 rounded block border border-gray-200">git init</code>
               </div>
-           </div>
-        )}
-        
-        {gitOpen && (
-          <div
-            className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4 backdrop-blur-sm"
-            role="dialog"
-            aria-modal="true"
-          >
-            <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 space-y-4">
-              <div className="flex items-center justify-between">
-                <h3 className="text-lg font-bold text-gray-900">Git Setup</h3>
-                <button onClick={() => setGitOpen(false)} className="text-gray-400 hover:text-gray-600">✕</button>
-              </div>
-              <div className="space-y-4">
-                 <div className="bg-gray-50 p-3 rounded-lg border border-gray-200">
-                    <div className="text-xs font-bold text-gray-700 uppercase mb-2">Initialize Repo</div>
-                    <code className="text-xs font-mono bg-white p-2 rounded block border border-gray-200">git init</code>
-                 </div>
-                 <div className="bg-gray-50 p-3 rounded-lg border border-gray-200">
-                    <div className="text-xs font-bold text-gray-700 uppercase mb-2">Add OpenCode Marker</div>
-                    <code className="text-xs font-mono bg-white p-2 rounded block border border-gray-200 overflow-x-auto">
-                       echo $(git rev-list --max-parents=0 --all | head -n1) &gt; .git/opencode
-                    </code>
-                 </div>
+              <div className="bg-gray-50 p-3 rounded-lg border border-gray-200">
+                <div className="text-xs font-bold text-gray-700 uppercase mb-2">Add OpenCode Marker</div>
+                <code className="text-xs font-mono bg-white p-2 rounded block border border-gray-200 overflow-x-auto">
+                  echo $(git rev-list --max-parents=0 --all | head -n1) &gt; .git/opencode
+                </code>
               </div>
             </div>
           </div>
-        )}
+        </div>
+      )}
     </div>
   )
 }
@@ -3350,10 +3621,10 @@ function Integrations({
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
-              
+
               {tab !== "linear" && (
                 <div className="grid grid-cols-2 gap-3">
-                   <input
+                  <input
                     value={repo}
                     onChange={(e) => setRepo(e.target.value)}
                     placeholder="Repo"
@@ -3365,15 +3636,13 @@ function Integrations({
                     className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
                     <option value="issue">Issue</option>
-                    <option value={tab === "github" ? "pull" : "merge"}>
-                      {tab === "github" ? "PR" : "MR"}
-                    </option>
+                    <option value={tab === "github" ? "pull" : "merge"}>{tab === "github" ? "PR" : "MR"}</option>
                   </select>
                 </div>
               )}
 
               {tab === "linear" && (
-                 <input
+                <input
                   value={team}
                   onChange={(e) => setTeam(e.target.value)}
                   placeholder="Team"
@@ -3429,6 +3698,7 @@ function SystemOps({
   limit,
   infra,
   agents,
+  models,
   onAddChangelog,
   onAddNotification,
   onDismissNotification,
@@ -3451,6 +3721,13 @@ function SystemOps({
   const [usedValue, setUsedValue] = useState(limit.used)
   const [resetValue, setResetValue] = useState(new Date(limit.resetAt).toISOString().slice(0, 16))
   const [editingLimit, setEditingLimit] = useState(false)
+  const [settingsError, setSettingsError] = useState("")
+  const importRef = useRef(null)
+
+  const providerList = useMemo(() => {
+    const items = models.map((model) => model.providerID)
+    return Array.from(new Set(items))
+  }, [models])
 
   useEffect(() => {
     setLimitValue(limit.limit)
@@ -3490,6 +3767,36 @@ function SystemOps({
     const resetAt = new Date(resetValue).getTime()
     await onUpdateLimit({ limit: Number(limitValue), used: Number(usedValue), resetAt })
     setEditingLimit(false)
+  }
+
+  const handleExport = () => {
+    const payload = JSON.stringify(settings, null, 2)
+    const blob = new Blob([payload], { type: "application/json" })
+    const link = document.createElement("a")
+    link.href = URL.createObjectURL(blob)
+    link.download = "opencode-agent-settings.json"
+    link.click()
+    URL.revokeObjectURL(link.href)
+  }
+
+  const handleImport = async (event) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+    try {
+      const text = await file.text()
+      const parsed = JSON.parse(text)
+      await onUpdateSettings(parsed)
+      setSettingsError("")
+    } catch (error) {
+      setSettingsError(error?.message || "Failed to import settings")
+    }
+    event.target.value = ""
+  }
+
+  const toggleProvider = (providerID) => {
+    const list = settings.models?.selectableProviders ?? []
+    const next = list.includes(providerID) ? list.filter((entry) => entry !== providerID) : [...list, providerID]
+    onUpdateSettings({ models: { ...settings.models, selectableProviders: next } })
   }
 
   const StatCard = ({ icon, label, value, subtext, status = "active" }) => (
@@ -3684,12 +3991,104 @@ function SystemOps({
                   onChange={(e) => toggle("agents", "defaultAgent", e.target.value)}
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
-                  {agents.map((a) => (
-                    <option key={a.name} value={a.name}>
-                      {a.name}
+                  {agents.map((agent) => (
+                    <option key={agent.name} value={agent.name}>
+                      {agent.name}
                     </option>
                   ))}
                 </select>
+              </div>
+              <div className="py-3">
+                <label className="text-sm font-medium text-gray-900 block mb-1">Analyze Agent</label>
+                <p className="text-xs text-gray-500 mb-2">Agent persona used to analyze and assign tasks</p>
+                <select
+                  value={settings.agents.analyzeAgent}
+                  onChange={(e) => toggle("agents", "analyzeAgent", e.target.value)}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  {agents.map((agent) => (
+                    <option key={agent.name} value={agent.name}>
+                      {agent.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+            <h3 className="text-lg font-bold text-gray-900 mb-4">Model Roles</h3>
+            <div className="space-y-4">
+              <div>
+                <label className="text-sm font-medium text-gray-900 block mb-1">Default Model</label>
+                <p className="text-xs text-gray-500 mb-2">Used for task execution when auto-selection is off</p>
+                <select
+                  value={settings.models.defaultModel}
+                  onChange={(e) => onUpdateSettings({ models: { ...settings.models, defaultModel: e.target.value } })}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  {models.map((model) => (
+                    <option key={model.key} value={model.key}>
+                      {model.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="text-sm font-medium text-gray-900 block mb-1">Analyze Model</label>
+                <p className="text-xs text-gray-500 mb-2">Used for task analysis and assignment</p>
+                <select
+                  value={settings.models.analyzeModel}
+                  onChange={(e) => onUpdateSettings({ models: { ...settings.models, analyzeModel: e.target.value } })}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  {models.map((model) => (
+                    <option key={model.key} value={model.key}>
+                      {model.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="text-sm font-medium text-gray-900 block mb-2">Selectable Providers</label>
+                <div className="space-y-2">
+                  {providerList.map((providerID) => (
+                    <label key={providerID} className="flex items-center gap-2 text-sm text-gray-700">
+                      <input
+                        type="checkbox"
+                        checked={settings.models.selectableProviders.includes(providerID)}
+                        onChange={() => toggleProvider(providerID)}
+                        className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                      />
+                      <span>{providerID}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <label className="text-sm font-medium text-gray-900 block mb-2">Import / Export</label>
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleExport}
+                    className="text-sm px-3 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    Export JSON
+                  </button>
+                  <button
+                    onClick={() => importRef.current?.click()}
+                    className="text-sm px-3 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    Import JSON
+                  </button>
+                  <input
+                    ref={importRef}
+                    type="file"
+                    accept="application/json"
+                    onChange={handleImport}
+                    className="hidden"
+                  />
+                </div>
+                {settingsError && <div className="text-xs text-red-600 mt-2">{settingsError}</div>}
               </div>
             </div>
           </div>
@@ -3775,11 +4174,7 @@ function SystemOps({
                   <div key={entry.id} className="relative pl-10">
                     <div
                       className={`absolute left-2.5 top-1.5 w-3 h-3 rounded-full border-2 border-white shadow-sm ${
-                        entry.type === "feature"
-                          ? "bg-blue-500"
-                          : entry.type === "fix"
-                            ? "bg-green-500"
-                            : "bg-gray-500"
+                        entry.type === "feature" ? "bg-blue-500" : entry.type === "fix" ? "bg-green-500" : "bg-gray-500"
                       }`}
                     />
                     <div className="bg-white border border-gray-200 rounded-lg p-3 shadow-sm">
@@ -3791,7 +4186,9 @@ function SystemOps({
                     </div>
                   </div>
                 ))}
-                {changelog.length === 0 && <div className="pl-10 text-sm text-gray-500 italic">No history available.</div>}
+                {changelog.length === 0 && (
+                  <div className="pl-10 text-sm text-gray-500 italic">No history available.</div>
+                )}
               </div>
             </div>
           </div>
@@ -3960,6 +4357,7 @@ function App() {
   const [messages, setMessages] = useState([])
   const [prompt, setPrompt] = useState("")
   const [sending, setSending] = useState(false)
+  const [executingTasks, setExecutingTasks] = useState([])
   const [agentChoice, setAgentChoice] = useState("")
   const [modelChoice, setModelChoice] = useState("")
   const [competitors, setCompetitors] = useState([])
@@ -3971,10 +4369,16 @@ function App() {
   const [files, setFiles] = useState([])
   const [filePath, setFilePath] = useState(".")
   const [sendError, setSendError] = useState("")
+  const [taskError, setTaskError] = useState("")
   const [changelog, setChangelog] = useState([])
   const [notifications, setNotifications] = useState([])
   const [systemSettings, setSystemSettings] = useState({
-    agents: { autoSelect: true, defaultAgent: "build" },
+    agents: { autoSelect: true, defaultAgent: "build", analyzeAgent: "big-pickle" },
+    models: {
+      defaultModel: "openai:gpt-5-codex",
+      analyzeModel: "openai:big-pickle",
+      selectableProviders: ["openai", "github-copilot"],
+    },
     notifications: { updates: true, errors: true },
     security: { share: true },
     auth: { requireApproval: false },
@@ -3996,7 +4400,15 @@ function App() {
   const [roadmapBusy, setRoadmapBusy] = useState(false)
   const [ideaBusy, setIdeaBusy] = useState(false)
 
-  const directory = useMemo(() => activeDirectory || currentProject?.worktree || pathInfo?.directory || "", [activeDirectory, currentProject, pathInfo])
+  const directory = useMemo(
+    () => activeDirectory || currentProject?.worktree || pathInfo?.directory || "",
+    [activeDirectory, currentProject, pathInfo],
+  )
+  const selectableModels = useMemo(() => {
+    const providers = systemSettings.models?.selectableProviders
+    if (!providers || providers.length === 0) return models
+    return models.filter((item) => providers.includes(item.providerID))
+  }, [models, systemSettings])
 
   const buildURL = useCallback(
     (path) => {
@@ -4018,7 +4430,7 @@ function App() {
 
   const autoSelectModel = useCallback(
     (kind) => {
-      if (!models.length) return modelChoice
+      if (!selectableModels.length) return modelChoice
       const choice = kind || "analysis"
       const picks = {
         ux: ["gemini", "google"],
@@ -4029,7 +4441,7 @@ function App() {
       const found = list
         .map((needle) => needle.toLowerCase())
         .map((needle) =>
-          models.find((item) => {
+          selectableModels.find((item) => {
             const label = item.label.toLowerCase()
             const provider = item.providerID?.toLowerCase?.() || ""
             const model = item.modelID?.toLowerCase?.() || ""
@@ -4037,11 +4449,22 @@ function App() {
           }),
         )
         .find(Boolean)
-      const key = found?.key || modelChoice || models[0]?.key || ""
+      const key = found?.key || modelChoice || selectableModels[0]?.key || ""
       if (key && key !== modelChoice) setModelChoice(key)
       return key
     },
-    [modelChoice, models],
+    [modelChoice, selectableModels],
+  )
+
+  const resolveModel = useCallback(
+    (key) => {
+      if (!key) return
+      const match = selectableModels.find((item) => item.key === key)
+      if (match) return { providerID: match.providerID, modelID: match.modelID }
+      const fallback = models.find((item) => item.key === key)
+      if (fallback) return { providerID: fallback.providerID, modelID: fallback.modelID }
+    },
+    [models, selectableModels],
   )
 
   useEffect(() => {
@@ -4147,6 +4570,23 @@ function App() {
     load()
   }, [buildURL, directory])
 
+  useEffect(() => {
+    if (!selectableModels.length) return
+    const match = selectableModels.find((item) => item.key === systemSettings.models?.defaultModel)
+    if (!match) return
+    setModelChoice((current) => {
+      if (current && selectableModels.find((item) => item.key === current)) return current
+      return match.key
+    })
+  }, [selectableModels, systemSettings])
+
+  useEffect(() => {
+    if (!agents.length) return
+    const match = agents.find((agent) => agent.name === systemSettings.agents.defaultAgent)
+    if (!match) return
+    setAgentChoice((current) => current || match.name)
+  }, [agents, systemSettings])
+
   const loadMessages = useCallback(
     async (sessionID) => {
       if (!sessionID) return []
@@ -4157,6 +4597,12 @@ function App() {
     },
     [buildURL],
   )
+
+  const refreshTasks = useCallback(async () => {
+    const response = await fetch(buildURL("/app/kanban"))
+    const data = await response.json()
+    setTasks(data)
+  }, [buildURL])
 
   useEffect(() => {
     if (!activeSession) return
@@ -4179,6 +4625,13 @@ function App() {
     }, 5000)
     return () => clearInterval(interval)
   }, [activeSession, buildURL, live, loadMessages])
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      refreshTasks().catch(() => {})
+    }, 4000)
+    return () => clearInterval(interval)
+  }, [refreshTasks])
 
   const loadFiles = useCallback(
     async (target) => {
@@ -4277,6 +4730,119 @@ function App() {
     return session
   }, [buildURL])
 
+  const executeAuto = useCallback(
+    async ({ prompt: text, analysis }) => {
+      const content = (text || "").trim()
+      if (!content) return { error: "Prompt is empty" }
+
+      const actionTypes = ["coding", "debugging", "testing", "review"]
+      const isAction = analysis?.requiresCode || actionTypes.includes(analysis?.taskType)
+      const title = content.length > 72 ? `${content.slice(0, 69)}...` : content
+      const complexity =
+        analysis?.complexity === "simple" ? "Simple" : analysis?.complexity === "complex" ? "Complex" : "Medium"
+      const impact = analysis?.complexity === "complex" ? "High" : analysis?.complexity === "simple" ? "Low" : "Medium"
+      const categoryMap = {
+        coding: "Feature",
+        debugging: "Bug",
+        testing: "Test",
+        review: "Review",
+        documentation: "Documentation",
+        planning: "Research",
+        exploration: "Research",
+      }
+      const category = categoryMap[analysis?.taskType] ?? "General"
+      const owner = analysis?.suggestedAgent ?? systemSettings.agents.defaultAgent
+
+      if (isAction) {
+        const response = await fetch(buildURL("/app/kanban"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            title,
+            description: content,
+            owner,
+            agent: owner,
+            category,
+            complexity,
+            priority: "Normal",
+            status: "backlog",
+          }),
+        })
+
+        if (!response.ok) {
+          const errorText = await response.text().catch(() => "")
+          const parsed = errorText ? JSON.parse(errorText).message?.toString?.() || errorText : "Failed to create task"
+          return { error: parsed }
+        }
+
+        const task = await response.json()
+        setTasks((items) => [task, ...items])
+        return { kind: "task", item: task }
+      }
+
+      const response = await fetch(buildURL("/app/ideation"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title,
+          type: analysis?.taskType ?? "general",
+          impact,
+        }),
+      })
+
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => "")
+        const parsed = errorText ? JSON.parse(errorText).message?.toString?.() || errorText : "Failed to create idea"
+        return { error: parsed }
+      }
+
+      const idea = await response.json()
+      setIdeas((items) => [idea, ...items])
+      return { kind: "idea", item: idea }
+    },
+    [buildURL, systemSettings],
+  )
+
+  const startSession = useCallback(
+    async ({ title, content, agent, model, system }) => {
+      const sessionResponse = await fetch(buildURL("/session"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title }),
+      })
+
+      if (!sessionResponse.ok) {
+        const errorText = await sessionResponse.text().catch(() => "")
+        const parsed = errorText ? JSON.parse(errorText).message?.toString?.() || errorText : "Failed to create session"
+        return { error: parsed }
+      }
+
+      const session = await sessionResponse.json()
+      setSessions((items) => [session, ...items])
+      setActiveSession(session.id)
+
+      const promptResponse = await fetch(buildURL(`/session/${session.id}/prompt_async`), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          parts: [{ type: "text", text: content }],
+          agent: agent || undefined,
+          model: model || undefined,
+          system: system || undefined,
+        }),
+      })
+
+      if (!promptResponse.ok) {
+        const errorText = await promptResponse.text().catch(() => "")
+        const parsed = errorText ? JSON.parse(errorText).message?.toString?.() || errorText : "Failed to start session"
+        return { error: parsed }
+      }
+
+      return { session }
+    },
+    [buildURL],
+  )
+
   const renameSession = useCallback(
     async (sessionID, title) => {
       const response = await fetch(buildURL(`/session/${sessionID}`), {
@@ -4322,7 +4888,9 @@ function App() {
       setSending(true)
       setSendError("")
       const selectedKey = autoSelectModel(classifyTaskKind(content))
-      const chosen = models.find((item) => item.key === selectedKey) || models.find((item) => item.key === modelChoice)
+      const chosen =
+        selectableModels.find((item) => item.key === selectedKey) ||
+        selectableModels.find((item) => item.key === modelChoice)
       const model = chosen ? { providerID: chosen.providerID, modelID: chosen.modelID } : undefined
       const body = {
         parts: [{ type: "text", text: content }],
@@ -4351,18 +4919,32 @@ function App() {
       }
       setSending(false)
     },
-    [activeSession, agentChoice, autoSelectModel, buildURL, classifyTaskKind, ensureSession, loadMessages, modelChoice, models, prompt],
+    [
+      activeSession,
+      agentChoice,
+      autoSelectModel,
+      buildURL,
+      classifyTaskKind,
+      ensureSession,
+      loadMessages,
+      modelChoice,
+      prompt,
+      selectableModels,
+    ],
   )
 
-  const generateInsight = useCallback(async (text) => {
-    const sessionID = await ensureSession()
-    if (!sessionID) return []
-    setActiveView("insights")
-    setPrompt(text)
-    await sendPrompt(text, sessionID)
-    const data = await loadMessages(sessionID)
-    return data
-  }, [ensureSession, sendPrompt, loadMessages])
+  const generateInsight = useCallback(
+    async (text) => {
+      const sessionID = await ensureSession()
+      if (!sessionID) return []
+      setActiveView("insights")
+      setPrompt(text)
+      await sendPrompt(text, sessionID)
+      const data = await loadMessages(sessionID)
+      return data
+    },
+    [ensureSession, sendPrompt, loadMessages],
+  )
 
   const createFeature = useCallback(
     async (payload) => {
@@ -4616,7 +5198,6 @@ function App() {
     [buildURL],
   )
 
-
   const updateIntegrationConfig = useCallback(
     async (payload) => {
       const response = await fetch(buildURL("/app/integrations/config"), {
@@ -4672,6 +5253,85 @@ function App() {
       setTasks((items) => items.map((item) => (item.id === task.id ? task : item)))
     },
     [buildURL],
+  )
+
+  const completeTask = useCallback(
+    async (task) => {
+      if (!task) return
+      const response = await fetch(buildURL(`/app/kanban/${task.id}/human`), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "complete" }),
+      })
+      const next = await response.json()
+      setTasks((items) => items.map((item) => (item.id === next.id ? next : item)))
+    },
+    [buildURL],
+  )
+
+  const reopenTask = useCallback(
+    async (task) => {
+      if (!task) return
+      const response = await fetch(buildURL(`/app/kanban/${task.id}/human`), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "reopen", prompt: task.review?.prompt }),
+      })
+      const next = await response.json()
+      setTasks((items) => items.map((item) => (item.id === next.id ? next : item)))
+    },
+    [buildURL],
+  )
+
+  const startTask = useCallback(
+    async (task) => {
+      if (!task) return
+      setTaskError("")
+      setExecutingTasks((items) => (items.includes(task.id) ? items : [...items, task.id]))
+
+      const detail = task.description ? `${task.title}\n\n${task.description}` : task.title
+      const reviewNote = task.review?.prompt ? `\n\nReview prompt: ${task.review.prompt}` : ""
+      const content = `Task ID: ${task.id}\n\n${detail}${reviewNote}\n\nWhen complete, call the kanban_signal tool with a summary.`
+      const analysisResponse = await fetch(buildURL("/auto/analyze"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt: detail }),
+      })
+
+      if (!analysisResponse.ok) {
+        const errorText = await analysisResponse.text().catch(() => "")
+        const parsed = errorText ? JSON.parse(errorText).message?.toString?.() || errorText : "Failed to analyze task"
+        setTaskError(parsed)
+        setExecutingTasks((items) => items.filter((entry) => entry !== task.id))
+        return
+      }
+
+      const selection = await analysisResponse.json()
+      const agent = systemSettings.agents.autoSelect ? selection.agent : systemSettings.agents.defaultAgent
+      const model = systemSettings.agents.autoSelect
+        ? selection.model
+        : resolveModel(systemSettings.models.defaultModel)
+      const system = `You are executing a kanban task. When you finish, call the kanban_signal tool with taskID ${task.id} and a summary.`
+      const result = await startSession({ title: task.title, content, agent, model, system })
+
+      if (result?.error) {
+        setTaskError(result.error)
+        setExecutingTasks((items) => items.filter((entry) => entry !== task.id))
+        return
+      }
+
+      await updateTask(task.id, {
+        agent,
+        sessionID: result.session?.id,
+      })
+
+      if (task.status !== "in_progress") {
+        await moveTask(task.id, "in_progress")
+      }
+
+      setExecutingTasks((items) => items.filter((entry) => entry !== task.id))
+    },
+    [buildURL, moveTask, resolveModel, startSession, systemSettings, updateTask],
   )
 
   const toggleFeature = useCallback(
@@ -4769,7 +5429,7 @@ function App() {
   const renderView = () => {
     switch (activeView) {
       case "showcase":
-        return <AutoInterfaceShowcase />
+        return <AutoInterfaceShowcase onExecute={executeAuto} onViewChange={setActiveView} />
       case "workspace":
         return (
           <Workspace
@@ -4812,7 +5472,7 @@ function App() {
             messages={messages}
             prompt={prompt}
             sending={sending}
-            models={models}
+            models={selectableModels}
             agents={agents}
             selectedAgent={agentChoice}
             selectedModel={modelChoice}
@@ -4862,6 +5522,16 @@ function App() {
             onEdit={(task) => setEditing(task)}
             onFiles={(task) => setDrawer(task)}
             onWizard={() => setWizard(true)}
+            onStart={startTask}
+            onComplete={completeTask}
+            onReopen={reopenTask}
+            onOpenSession={(task) => {
+              if (!task?.sessionID) return
+              setActiveSession(task.sessionID)
+              setActiveView("insights")
+            }}
+            running={executingTasks}
+            error={taskError}
           />
         )
       case "roadmap":
@@ -4907,6 +5577,7 @@ function App() {
             limit={rateLimit}
             infra={infra}
             agents={agents}
+            models={models}
             onAddChangelog={addChangelog}
             onAddNotification={addNotification}
             onDismissNotification={dismissNotification}
@@ -4917,7 +5588,7 @@ function App() {
       case "agent-tools":
         return <AgentTools agents={agents} />
       default:
-        return <AutoInterfaceShowcase />
+        return <AutoInterfaceShowcase onExecute={executeAuto} onViewChange={setActiveView} />
     }
   }
 
@@ -4931,7 +5602,9 @@ function App() {
         onNewTask={() => setWizard(true)}
       />
 
-      <div className={`flex-1 flex flex-col transition-all duration-300 overflow-hidden ${sidebarOpen ? "ml-72" : "ml-16"}`}>
+      <div
+        className={`flex-1 flex flex-col transition-all duration-300 overflow-hidden ${sidebarOpen ? "ml-72" : "ml-16"}`}
+      >
         <header className="bg-white border-b border-gray-200 px-6 py-4 sticky top-0 z-30">
           <div className="flex items-center gap-4">
             <div className="p-2 gradient-bg rounded-lg text-white" role="img" aria-label="OpenCode Logo">

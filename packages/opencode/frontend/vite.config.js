@@ -7,6 +7,10 @@ export default defineConfig({
     port: 3000,
     host: true,
     proxy: {
+      "/auto": {
+        target: "http://localhost:4096",
+        changeOrigin: true,
+      },
       "/app": {
         target: "http://localhost:4096",
         changeOrigin: true,

@@ -10,6 +10,7 @@ import { ContextData } from "../app/context"
 import { Insights } from "../app/insights"
 import { SystemData } from "../app/system"
 import { Integrations } from "../app/integrations"
+import { reviewSignal } from "../app/kanban-review"
 import { Instance } from "../project/instance"
 
 export const AppRoute = new Hono()
@@ -72,6 +73,65 @@ export const AppRoute = new Hono()
       const taskID = c.req.valid("param").taskID
       const body = c.req.valid("json")
       const task = await Kanban.update(Instance.project.id, taskID, body)
+      return c.json(task)
+    },
+  )
+  .post(
+    "/kanban/:taskID/signal",
+    describeRoute({
+      summary: "Signal task completion",
+      description: "Signal that an agent completed work on a task and trigger model review.",
+      operationId: "app.kanban.signal",
+      responses: {
+        200: {
+          description: "Review result",
+          content: {
+            "application/json": {
+              schema: resolver(
+                z.object({
+                  task: Kanban.Info,
+                  review: z.object({
+                    status: z.enum(["approved", "revise"]),
+                    notes: z.string(),
+                    prompt: z.string().optional(),
+                  }),
+                }),
+              ),
+            },
+          },
+        },
+        ...errors(400, 404),
+      },
+    }),
+    validator("param", z.object({ taskID: z.string() })),
+    validator("json", Kanban.Signal),
+    async (c) => {
+      const taskID = c.req.valid("param").taskID
+      const body = c.req.valid("json")
+      const result = await reviewSignal(Instance.project.id, taskID, body)
+      return c.json(result)
+    },
+  )
+  .post(
+    "/kanban/:taskID/human",
+    describeRoute({
+      summary: "Human review action",
+      description: "Move a task to done or back to in-progress with notes.",
+      operationId: "app.kanban.human",
+      responses: {
+        200: {
+          description: "Updated task",
+          content: { "application/json": { schema: resolver(Kanban.Info) } },
+        },
+        ...errors(400, 404),
+      },
+    }),
+    validator("param", z.object({ taskID: z.string() })),
+    validator("json", Kanban.HumanAction),
+    async (c) => {
+      const taskID = c.req.valid("param").taskID
+      const body = c.req.valid("json")
+      const task = await Kanban.humanAction(Instance.project.id, taskID, body)
       return c.json(task)
     },
   )

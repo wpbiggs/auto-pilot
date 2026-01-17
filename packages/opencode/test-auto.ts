@@ -79,14 +79,14 @@ async function testAutoInterface() {
           )
         }
       } catch (error) {
-        console.error(`   ❌ Analysis failed: ${error.message}`)
+        console.error(`   ❌ Analysis failed: ${error instanceof Error ? error.message : String(error)}`)
       }
     }
 
     console.log("\n🎉 Auto interface test completed!")
   } catch (error) {
-    console.error("❌ Test failed:", error.message)
-    console.error(error.stack)
+    console.error("❌ Test failed:", error instanceof Error ? error.message : String(error))
+    console.error(error instanceof Error ? error.stack : "")
     process.exit(1)
   }
 }

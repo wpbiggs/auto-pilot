@@ -36,6 +36,12 @@ export namespace SystemData {
       agents: z.object({
         autoSelect: z.boolean(),
         defaultAgent: z.string(),
+        analyzeAgent: z.string(),
+      }),
+      models: z.object({
+        defaultModel: z.string(),
+        analyzeModel: z.string(),
+        selectableProviders: z.array(z.string()),
       }),
       notifications: z.object({
         updates: z.boolean(),
@@ -75,6 +81,12 @@ export namespace SystemData {
     agents: {
       autoSelect: true,
       defaultAgent: "build",
+      analyzeAgent: "big-pickle",
+    },
+    models: {
+      defaultModel: "openai:gpt-5-codex",
+      analyzeModel: "openai:big-pickle",
+      selectableProviders: ["openai", "github-copilot"],
     },
     notifications: {
       updates: true,
@@ -93,6 +105,32 @@ export namespace SystemData {
     used: 0,
     resetAt: Date.now() + 1000 * 60 * 60 * 24,
   })
+
+  const mergeSettings = (base: Settings, input?: Partial<Settings>): Settings => {
+    if (!input) return base
+    return {
+      agents: {
+        ...base.agents,
+        ...input.agents,
+      },
+      models: {
+        ...base.models,
+        ...input.models,
+      },
+      notifications: {
+        ...base.notifications,
+        ...input.notifications,
+      },
+      security: {
+        ...base.security,
+        ...input.security,
+      },
+      auth: {
+        ...base.auth,
+        ...input.auth,
+      },
+    }
+  }
 
   export async function listChangelog(projectID: string) {
     return Storage.read<Changelog[]>(changelogKey(projectID))
@@ -159,31 +197,15 @@ export namespace SystemData {
   }
 
   export async function getSettings(projectID: string) {
+    const base = defaults()
     return Storage.read<Settings>(settingsKey(projectID))
-      .then((value) => value ?? defaults())
-      .catch(() => defaults())
+      .then((value) => (value ? mergeSettings(base, value) : base))
+      .catch(() => base)
   }
 
   export async function updateSettings(projectID: string, input: Partial<Settings>) {
     const current = await getSettings(projectID)
-    const next: Settings = {
-      agents: {
-        ...current.agents,
-        ...input.agents,
-      },
-      notifications: {
-        ...current.notifications,
-        ...input.notifications,
-      },
-      security: {
-        ...current.security,
-        ...input.security,
-      },
-      auth: {
-        ...current.auth,
-        ...input.auth,
-      },
-    }
+    const next = mergeSettings(current, input)
     await Storage.write(settingsKey(projectID), next)
     return next
   }

@@ -9,6 +9,10 @@ import { Truncate } from "../tool/truncation"
 import PROMPT_GENERATE from "./generate.txt"
 import PROMPT_COMPACTION from "./prompt/compaction.txt"
 import PROMPT_EXPLORE from "./prompt/explore.txt"
+import PROMPT_REVIEW from "./prompt/review.txt"
+import PROMPT_TEST from "./prompt/test.txt"
+import PROMPT_DEBUG from "./prompt/debug.txt"
+import PROMPT_DOCS from "./prompt/docs.txt"
 import PROMPT_SUMMARY from "./prompt/summary.txt"
 import PROMPT_TITLE from "./prompt/title.txt"
 import { PermissionNext } from "@/permission/next"
@@ -135,6 +139,77 @@ export namespace Agent {
         options: {},
         mode: "subagent",
         native: true,
+      },
+      review: {
+        name: "review",
+        mode: "primary",
+        native: true,
+        description: "Specialized agent for code review and analysis. Use this agent when you need to review code changes, analyze code quality, or get feedback on implementation details.",
+        prompt: PROMPT_REVIEW,
+        permission: PermissionNext.merge(
+          defaults,
+          PermissionNext.fromConfig({
+            read: "allow",
+            bash: "allow",
+          }),
+          user,
+        ),
+        options: {},
+      },
+      test: {
+        name: "test",
+        mode: "primary",
+        native: true,
+        description: "Specialized agent for running and fixing tests. Use this agent when you need to verify code correctness or fix test failures.",
+        prompt: PROMPT_TEST,
+        permission: PermissionNext.merge(
+          defaults,
+          PermissionNext.fromConfig({
+            read: "allow",
+            bash: "allow",
+            edit: "allow",
+          }),
+          user,
+        ),
+        options: {},
+      },
+      debug: {
+        name: "debug",
+        mode: "primary",
+        native: true,
+        description: "Specialized agent for debugging and fixing issues. Use this agent when you encounter errors or unexpected behavior.",
+        prompt: PROMPT_DEBUG,
+        permission: PermissionNext.merge(
+          defaults,
+          PermissionNext.fromConfig({
+            read: "allow",
+            bash: "allow",
+            edit: "allow",
+            grep: "allow",
+          }),
+          user,
+        ),
+        options: {},
+      },
+      docs: {
+        name: "docs",
+        mode: "primary",
+        native: true,
+        description: "Specialized agent for writing and maintaining documentation. Use this agent when you need to create or update documentation files.",
+        prompt: PROMPT_DOCS,
+        permission: PermissionNext.merge(
+          defaults,
+          PermissionNext.fromConfig({
+            read: "allow",
+            write: "allow",
+            edit: "allow",
+            bash: "allow",
+            grep: "allow",
+            glob: "allow",
+          }),
+          user,
+        ),
+        options: {},
       },
       compaction: {
         name: "compaction",

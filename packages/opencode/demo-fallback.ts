@@ -41,7 +41,7 @@ async function demoFallback() {
 
       console.log(`✅ Fallback Analysis Working: ${typeMatch && complexityGood && confidence >= 0.5 ? "Yes" : "No"}`)
     } catch (error) {
-      console.log(`❌ Error: ${error.message}`)
+      console.log(`❌ Error: ${error instanceof Error ? error.message : String(error)}`)
     }
   }
 
