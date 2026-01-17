@@ -1,4 +1,4 @@
-import { createSignal, For, Show } from "solid-js"
+import { createSignal, For, Show, type JSX as SolidJSX } from "solid-js"
 import { Button } from "@opencode-ai/ui/button"
 import { Card } from "@opencode-ai/ui/card"
 import { Icon } from "@opencode-ai/ui/icon"
@@ -9,7 +9,7 @@ interface OnboardingStep {
   title: string
   description: string
   icon: string
-  content: JSX.Element
+  content: SolidJSX.Element
 }
 
 export function OnboardingWizard(props: { onComplete: () => void }) {
