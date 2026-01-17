@@ -37,6 +37,8 @@ const Kanban = lazy(() => import("@/pages/kanban"))
 const Agents = lazy(() => import("@/pages/agents"))
 const Insights = lazy(() => import("@/pages/insights"))
 const TaskWizard = lazy(() => import("@/pages/task-wizard"))
+const AgentMarketplace = lazy(() => import("@/pages/agent-marketplace"))
+const Analytics = lazy(() => import("@/pages/analytics"))
 const Loading = () => <div class="size-full flex items-center justify-center text-text-weak">Loading...</div>
 
 declare global {
@@ -184,6 +186,22 @@ export function AppInterface(props: { defaultUrl?: string }) {
                   component={() => (
                     <Suspense fallback={<Loading />}>
                       <TaskWizard />
+                    </Suspense>
+                  )}
+                />
+                <Route
+                  path="/agent-marketplace"
+                  component={() => (
+                    <Suspense fallback={<Loading />}>
+                      <AgentMarketplace />
+                    </Suspense>
+                  )}
+                />
+                <Route
+                  path="/analytics"
+                  component={() => (
+                    <Suspense fallback={<Loading />}>
+                      <Analytics />
                     </Suspense>
                   )}
                 />
