@@ -141,6 +141,7 @@ export function LiveExecutionStage({ plan, onComplete, onBack }) {
   const [isPaused, setIsPaused] = useState(false)
   const [executor, setExecutor] = useState(null)
   const [sdkConnected, setSdkConnected] = useState(null) // null = checking, true/false = result
+  const [escalationCount, setEscalationCount] = useState(0)
 
   const addLog = useCallback((type, message) => {
     setLogs(prev => [...prev, {
@@ -150,6 +151,25 @@ export function LiveExecutionStage({ plan, onComplete, onBack }) {
       message
     }].slice(-100)) // Keep last 100 logs
   }, [])
+
+  // Escalation webhook handler
+  const handleEscalation = useCallback((event) => {
+    switch (event.type) {
+      case "escalation_started":
+        setEscalationCount(prev => prev + 1)
+        addLog("warning", `⬆️ Escalating "${event.taskName}" from ${event.originalModel} to ${event.escalatedModel} (Level ${event.escalationLevel}/${event.maxEscalations})`)
+        break
+      case "escalation_completed":
+        addLog("success", `✅ Escalation succeeded for "${event.taskName}" with ${event.escalatedModel}`)
+        break
+      case "escalation_failed":
+        addLog("error", `❌ Escalation exhausted for "${event.taskName}" - All models failed after ${event.escalationLevel} attempts`)
+        break
+      case "task_failed":
+        // This is the initial failure before escalation
+        break
+    }
+  }, [addLog])
 
   useEffect(() => {
     // Check SDK connection and start execution
@@ -161,6 +181,7 @@ export function LiveExecutionStage({ plan, onComplete, onBack }) {
       
       if (isConnected) {
         addLog("success", "Connected to OpenCode SDK - using real AI agents")
+        addLog("info", "🛡️ Failure escalation enabled - tasks will auto-escalate to stronger models on failure")
       } else {
         addLog("warning", "SDK not available - running in demo mode")
       }
@@ -185,7 +206,15 @@ export function LiveExecutionStage({ plan, onComplete, onBack }) {
       }
 
       const exec = isConnected
-        ? createExecutionService(plan, handleUpdate)
+        ? createExecutionService(plan, handleUpdate, {
+            // Escalation configuration
+            escalation: {
+              enabled: true,
+              maxEscalations: 2,
+              includeFailedOutputInEscalation: true,
+            },
+            onEscalation: handleEscalation,
+          })
         : createMockExecutionService(plan, handleUpdate)
       
       setExecutor(exec)
@@ -196,7 +225,7 @@ export function LiveExecutionStage({ plan, onComplete, onBack }) {
     return () => {
       // Cleanup on unmount
     }
-  }, [plan, addLog])
+  }, [plan, addLog, handleEscalation])
 
   const handlePause = () => {
     if (!executor) return

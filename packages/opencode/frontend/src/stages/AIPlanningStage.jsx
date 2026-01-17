@@ -94,7 +94,7 @@ function formatDuration(minutes) {
   return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`
 }
 
-// Generate default prompt for a task
+// Generate default prompt for a task - Enhanced with production-ready requirements
 function generateDefaultPrompt(task, projectDescription) {
   return `## Task: ${task.name}
 
@@ -104,14 +104,40 @@ ${task.description}
 This task is part of a larger project:
 ${projectDescription}
 
-### Requirements
-- Follow best practices for the technology stack
-- Write clean, maintainable code
-- Include appropriate error handling
-- Add inline comments for complex logic
+## CRITICAL REQUIREMENTS - READ CAREFULLY
+
+### ⚠️ ABSOLUTE REQUIREMENTS (MUST FOLLOW):
+1. **COMPLETE IMPLEMENTATION ONLY** - Every function, method, and component MUST be fully implemented
+2. **NO STUBS OR PLACEHOLDERS** - NEVER write stub functions, TODO comments, or placeholder code
+3. **NO PARTIAL IMPLEMENTATIONS** - Do not leave any functionality unimplemented
+4. **PRODUCTION-READY CODE** - All code must be ready for immediate deployment
+5. **WORKING CODE ONLY** - Every line of code must actually work
+
+### 🚫 EXPLICITLY FORBIDDEN:
+- "// TODO: implement this"
+- "throw new Error('Not implemented')"
+- "pass  # placeholder"
+- Empty function bodies
+- Functions that just log "not implemented"
+- Returning mock data when real implementation is needed
+- Comments like "implement later", "add logic here"
+
+### ✅ REQUIRED IN ALL CODE:
+- Complete error handling with try/catch
+- Input validation with clear error messages
+- Edge case handling (null, undefined, empty arrays)
+- Type safety (TypeScript types or JSDoc)
+- Clear comments for complex logic
+- Security considerations (never expose secrets)
 
 ### Expected Output
-Complete implementation with all necessary files and configurations.`
+Complete, working, production-ready implementation with:
+- All necessary imports
+- All functions fully implemented (no stubs)
+- Comprehensive error handling
+- Ready to copy-paste and run immediately
+
+Remember: If you cannot fully implement something, explain why and provide the closest complete alternative. NEVER leave placeholder code.`
 }
 
 // Model Selector Dropdown
