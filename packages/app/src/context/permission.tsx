@@ -5,7 +5,6 @@ import type { PermissionRequest } from "@opencode-ai/sdk/v2/client"
 import { Persist, persisted } from "@/utils/persist"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useGlobalSync } from "./global-sync"
-import { useParams } from "@solidjs/router"
 import { base64Decode, base64Encode } from "@opencode-ai/util/encode"
 
 type PermissionRespondFn = (input: {
@@ -48,16 +47,11 @@ function hasAutoAcceptPermissionConfig(permission: unknown) {
 export const { use: usePermission, provider: PermissionProvider } = createSimpleContext({
   name: "Permission",
   init: () => {
-    const params = useParams()
     const globalSDK = useGlobalSDK()
     const globalSync = useGlobalSync()
 
-    const permissionsEnabled = createMemo(() => {
-      const directory = params.dir ? base64Decode(params.dir) : undefined
-      if (!directory) return false
-      const [store] = globalSync.child(directory)
-      return hasAutoAcceptPermissionConfig(store.config.permission)
-    })
+    // For single-page AutoDevFlow, permissions are not directory-based
+    const permissionsEnabled = createMemo(() => false)
 
     const [store, setStore, _, ready] = persisted(
       Persist.global("permission", ["permission.v3"]),
