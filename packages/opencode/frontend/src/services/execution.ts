@@ -202,17 +202,19 @@ const PROVIDER_NAMES: Record<string, string> = {
   anthropic: "Anthropic",
 }
 
-// KNOWN VALID MODELS - Only these models should be assigned
-// This prevents assignment of fake/invalid models like "gpt-5.2-codex"
+// KNOWN VALID MODELS - Used to validate model assignments
+// This list is used for VALIDATION ONLY, not filtering - all SDK models are usable
 const KNOWN_VALID_MODELS = new Set([
   // OpenAI
   "gpt-4", "gpt-4-turbo", "gpt-4o", "gpt-4o-mini", "gpt-4.1", "gpt-4.1-mini", "gpt-4.1-nano",
+  "gpt-5", "gpt-5.1", "gpt-5-turbo",
   "o1", "o1-mini", "o1-preview", "o3", "o3-mini",
   // Anthropic  
-  "claude-opus-4", "claude-sonnet-4", "claude-sonnet-3.5", "claude-haiku-3", 
-  "claude-3-opus", "claude-3-sonnet", "claude-3-haiku",
+  "claude-opus-4", "claude-opus-4.5", "claude-sonnet-4", "claude-sonnet-3.5", "claude-haiku-3", 
+  "claude-3-opus", "claude-3-sonnet", "claude-3-haiku", "claude-3.5-sonnet",
   // Google
   "gemini-pro", "gemini-flash", "gemini-2-flash", "gemini-3-flash-preview", "gemini-1.5-pro", "gemini-1.5-flash",
+  "gemini-2.0-flash", "gemini-2.0-flash-thinking-exp-01-21", "gemini-2.0-pro",
   // GitHub Copilot
   "copilot-chat", "copilot",
   // OpenCode
@@ -220,21 +222,28 @@ const KNOWN_VALID_MODELS = new Set([
 ])
 
 /**
- * Validate model ID is a known valid model
+ * Validate model ID is not a fake/hallucinated model
+ * This is a LOOSE check - we want to allow all real models from SDK
+ * Only reject clearly fake patterns like "gpt-5.2-codex"
  */
 function isValidModel(modelId: string): boolean {
-  // Check exact match first
+  // Check exact match first - definitely valid
   if (KNOWN_VALID_MODELS.has(modelId)) return true
-  // Check if any known model is a prefix/suffix
+  
+  // Check if any known model is a prefix/suffix - likely a variant
   for (const known of KNOWN_VALID_MODELS) {
     if (modelId.includes(known) || known.includes(modelId)) return true
   }
-  // Reject any unknown model with suspicious patterns
-  if (modelId.includes("codex") && !modelId.includes("davinci")) {
-    console.error(`[isValidModel] Rejecting suspicious model: ${modelId}`)
+  
+  // Only reject models with clearly fake patterns
+  // Pattern: "gpt-X.X-codex" where X.X is a version we don't recognize
+  if (modelId.match(/gpt-\d+\.\d+-codex/i)) {
+    console.warn(`[isValidModel] Rejecting likely fake model: ${modelId}`)
     return false
   }
-  return true // Allow other models that pass basic validation
+  
+  // Allow ALL other models - they come from the SDK and are valid
+  return true
 }
 
 // Cached available models from SDK - populated on first fetch
@@ -1953,120 +1962,192 @@ function getLeastUsedModel(models: AvailableModel[]): AvailableModel {
 }
 
 /**
- * Prefer native provider models over proxied ones
- * E.g., prefer OpenAI's gpt-4o over GitHub Copilot's gpt-4o
+ * Strategic model mapping based on task type and model strengths
  */
-function preferNativeProvider(models: AvailableModel[]): AvailableModel[] {
-  // Map model IDs to their "native" provider
-  const nativeProviders: Record<string, string[]> = {
-    "gpt": ["openai"],
-    "o1": ["openai"],
-    "o3": ["openai"],
-    "claude": ["anthropic"],
-    "gemini": ["google"],
-    "copilot": ["github", "github-copilot"],
-    "zen": ["zen", "opencode"],
-  }
+const TASK_TYPE_MODEL_MAP: Record<string, { primary: string; fallbacks: string[] }> = {
+  // Thinking/reasoning/architecture/planning → Claude Opus 4.5
+  "architecture": { primary: "claude-opus-4.5", fallbacks: ["claude-opus-4", "claude-sonnet-4", "gpt-4o"] },
+  "planning": { primary: "claude-opus-4.5", fallbacks: ["claude-opus-4", "claude-sonnet-4", "gpt-4o"] },
+  "design": { primary: "claude-opus-4.5", fallbacks: ["claude-opus-4", "gemini-2.0-flash-thinking-exp-01-21", "gpt-4o"] },
+  "thinking": { primary: "claude-opus-4.5", fallbacks: ["claude-opus-4", "o1", "gpt-4o"] },
+  "reasoning": { primary: "claude-opus-4.5", fallbacks: ["claude-opus-4", "o1", "gpt-4o"] },
+  "strategy": { primary: "claude-opus-4.5", fallbacks: ["claude-opus-4", "gpt-4o"] },
   
-  return models.map(model => {
-    // Find native provider for this model type
-    for (const [prefix, providers] of Object.entries(nativeProviders)) {
-      if (model.id.toLowerCase().startsWith(prefix)) {
-        // Check if current provider is native
-        if (!providers.includes(model.providerId.toLowerCase())) {
-          // Not native - mark with lower priority by returning with modified tier
-          // This is a soft preference, not a hard filter
-          return { ...model, _isProxy: true }
-        }
-      }
-    }
-    return { ...model, _isProxy: false }
-  }).sort((a, b) => {
-    // Sort non-proxy models first
-    const aProxy = (a as any)._isProxy ? 1 : 0
-    const bProxy = (b as any)._isProxy ? 1 : 0
-    return aProxy - bProxy
-  }) as AvailableModel[]
+  // Frontend/UX/UI/design/styling → Gemini Pro Preview
+  "frontend": { primary: "gemini-2.0-flash-thinking-exp-01-21", fallbacks: ["gemini-pro", "gpt-4o", "claude-sonnet-4"] },
+  "ui": { primary: "gemini-2.0-flash-thinking-exp-01-21", fallbacks: ["gemini-pro", "gpt-4o", "claude-sonnet-4"] },
+  "ux": { primary: "gemini-2.0-flash-thinking-exp-01-21", fallbacks: ["gemini-pro", "gpt-4o", "claude-sonnet-4"] },
+  "styling": { primary: "gemini-2.0-flash-thinking-exp-01-21", fallbacks: ["gemini-pro", "gpt-4o"] },
+  "css": { primary: "gemini-2.0-flash-thinking-exp-01-21", fallbacks: ["gemini-pro", "gpt-4o"] },
+  "component": { primary: "gemini-2.0-flash-thinking-exp-01-21", fallbacks: ["gemini-pro", "gpt-4o", "claude-sonnet-4"] },
+  "react": { primary: "gemini-2.0-flash-thinking-exp-01-21", fallbacks: ["gemini-pro", "gpt-4o"] },
+  "vue": { primary: "gemini-2.0-flash-thinking-exp-01-21", fallbacks: ["gemini-pro", "gpt-4o"] },
+  "angular": { primary: "gemini-2.0-flash-thinking-exp-01-21", fallbacks: ["gemini-pro", "gpt-4o"] },
+  
+  // Backend/API/database/server → GPT-5.1
+  "backend": { primary: "gpt-5.1", fallbacks: ["gpt-4o", "gpt-4-turbo", "claude-sonnet-4"] },
+  "api": { primary: "gpt-5.1", fallbacks: ["gpt-4o", "gpt-4-turbo", "claude-sonnet-4"] },
+  "database": { primary: "gpt-5.1", fallbacks: ["gpt-4o", "gpt-4-turbo", "claude-sonnet-4"] },
+  "server": { primary: "gpt-5.1", fallbacks: ["gpt-4o", "gpt-4-turbo", "claude-sonnet-4"] },
+  "endpoint": { primary: "gpt-5.1", fallbacks: ["gpt-4o", "gpt-4-turbo"] },
+  "rest": { primary: "gpt-5.1", fallbacks: ["gpt-4o", "gpt-4-turbo"] },
+  "graphql": { primary: "gpt-5.1", fallbacks: ["gpt-4o", "gpt-4-turbo"] },
+  "auth": { primary: "gpt-5.1", fallbacks: ["gpt-4o", "gpt-4-turbo", "claude-sonnet-4"] },
+  "authentication": { primary: "gpt-5.1", fallbacks: ["gpt-4o", "gpt-4-turbo", "claude-sonnet-4"] },
+  "middleware": { primary: "gpt-5.1", fallbacks: ["gpt-4o", "gpt-4-turbo"] },
+  
+  // Testing/QA/debugging → GPT-4 Turbo
+  "test": { primary: "gpt-4-turbo", fallbacks: ["gpt-4o", "gpt-5.1", "claude-sonnet-4"] },
+  "testing": { primary: "gpt-4-turbo", fallbacks: ["gpt-4o", "gpt-5.1", "claude-sonnet-4"] },
+  "qa": { primary: "gpt-4-turbo", fallbacks: ["gpt-4o", "gpt-5.1"] },
+  "debug": { primary: "gpt-4-turbo", fallbacks: ["gpt-4o", "gpt-5.1", "claude-sonnet-4"] },
+  "debugging": { primary: "gpt-4-turbo", fallbacks: ["gpt-4o", "gpt-5.1"] },
+  "fix": { primary: "gpt-4-turbo", fallbacks: ["gpt-4o", "gpt-5.1", "claude-sonnet-4"] },
+  "bug": { primary: "gpt-4-turbo", fallbacks: ["gpt-4o", "gpt-5.1"] },
+  "error": { primary: "gpt-4-turbo", fallbacks: ["gpt-4o", "claude-sonnet-4"] },
+  
+  // Documentation/README → GPT-4o
+  "documentation": { primary: "gpt-4o", fallbacks: ["gpt-4-turbo", "claude-sonnet-4", "gemini-pro"] },
+  "readme": { primary: "gpt-4o", fallbacks: ["gpt-4-turbo", "claude-sonnet-4"] },
+  "docs": { primary: "gpt-4o", fallbacks: ["gpt-4-turbo", "claude-sonnet-4"] },
+  "comment": { primary: "gpt-4o", fallbacks: ["gpt-4-turbo", "claude-sonnet-4"] },
+  "jsdoc": { primary: "gpt-4o", fallbacks: ["gpt-4-turbo", "claude-sonnet-4"] },
+  "docstring": { primary: "gpt-4o", fallbacks: ["gpt-4-turbo", "claude-sonnet-4"] },
 }
 
 /**
- * Assign optimal model based on task complexity and available models
- * Dynamically selects from actually available/configured models
- * Uses rotation to spread load across models for diversity
- * Throws error if no models are available - never falls back to hardcoded lists
+ * Detect task type from task name and description
  */
-function assignOptimalModel(complexity: string, availableModels?: AvailableModel[]): string {
+function detectTaskType(taskName: string, taskDescription: string): string | null {
+  const combined = `${taskName} ${taskDescription}`.toLowerCase()
+  
+  // Check each task type keyword
+  for (const taskType of Object.keys(TASK_TYPE_MODEL_MAP)) {
+    if (combined.includes(taskType)) {
+      return taskType
+    }
+  }
+  
+  // Additional pattern matching for common task patterns
+  if (combined.match(/\b(layout|page|screen|view|form|button|input|modal|dialog)\b/)) {
+    return "frontend"
+  }
+  if (combined.match(/\b(route|controller|service|repository|model|schema|migration)\b/)) {
+    return "backend"
+  }
+  if (combined.match(/\b(unit|integration|e2e|spec|assert|mock|stub)\b/)) {
+    return "test"
+  }
+  if (combined.match(/\b(setup|init|scaffold|bootstrap|structure|foundation)\b/)) {
+    return "architecture"
+  }
+  
+  return null
+}
+
+/**
+ * Find the best matching model from available models
+ */
+function findModelMatch(modelId: string, available: AvailableModel[]): AvailableModel | null {
+  // Exact match
+  const exact = available.find(m => m.id === modelId)
+  if (exact) return exact
+  
+  // Partial match (e.g., "claude-opus-4" matches "claude-opus-4.5")
+  const partial = available.find(m => m.id.includes(modelId) || modelId.includes(m.id))
+  if (partial) return partial
+  
+  return null
+}
+
+/**
+ * Assign optimal model based on task type and model strengths
+ * Uses strategic mapping based on task content analysis
+ * Falls back to complexity-based round-robin if no match
+ */
+function assignOptimalModel(complexity: string, availableModels?: AvailableModel[], taskName?: string, taskDescription?: string): string {
   const models = availableModels || cachedAvailableModels || []
   const available = models.filter(m => m.available)
   
-  // Debug logging
-  console.log(`[assignOptimalModel] Complexity: ${complexity}, Available models: ${available.length}`)
+  console.log(`[assignOptimalModel] Analyzing task: "${taskName}" with complexity: ${complexity}`)
   
-  // If no available models, throw error - don't use hardcoded fallbacks
+  // If no available models, throw error
   if (available.length === 0) {
     throw new Error(
       "[assignOptimalModel] No models available. " +
-      "Please connect to OpenCode SDK and ensure at least one provider is configured. " +
-      "Run fetchAvailableModels() first to populate the model cache."
+      "Please connect to OpenCode SDK and ensure at least one provider is configured."
     )
   }
   
-  // DON'T filter by native provider - just use all available models for diversity
-  // The preferNativeProvider was causing us to filter down to only 1-2 models
+  // Try strategic assignment based on task type
+  if (taskName || taskDescription) {
+    const taskType = detectTaskType(taskName || "", taskDescription || "")
+    
+    if (taskType && TASK_TYPE_MODEL_MAP[taskType]) {
+      const mapping = TASK_TYPE_MODEL_MAP[taskType]
+      console.log(`[assignOptimalModel] Detected task type: "${taskType}" → Primary: ${mapping.primary}`)
+      
+      // Try primary model first
+      const primaryMatch = findModelMatch(mapping.primary, available)
+      if (primaryMatch) {
+        modelUsageCounter.set(primaryMatch.id, (modelUsageCounter.get(primaryMatch.id) || 0) + 1)
+        console.log(`[assignOptimalModel] ✓ Using primary model: ${primaryMatch.id} for task type: ${taskType}`)
+        return primaryMatch.id
+      }
+      
+      // Try fallbacks in order
+      for (const fallback of mapping.fallbacks) {
+        const fallbackMatch = findModelMatch(fallback, available)
+        if (fallbackMatch) {
+          modelUsageCounter.set(fallbackMatch.id, (modelUsageCounter.get(fallbackMatch.id) || 0) + 1)
+          console.log(`[assignOptimalModel] ✓ Using fallback model: ${fallbackMatch.id} for task type: ${taskType}`)
+          return fallbackMatch.id
+        }
+      }
+      
+      console.log(`[assignOptimalModel] No matching models for task type: ${taskType}, falling back to complexity-based`)
+    }
+  }
   
-  // Find models by tier from ALL available (not filtered)
+  // Fallback to complexity-based round-robin selection
   const premiumModels = available.filter(m => m.tier === "premium")
   const standardModels = available.filter(m => m.tier === "standard")
   const fastModels = available.filter(m => m.tier === "fast")
   
-  console.log(`[assignOptimalModel] Available: ${available.length} total`)
-  console.log(`[assignOptimalModel] By tier - Premium: ${premiumModels.length}, Standard: ${standardModels.length}, Fast: ${fastModels.length}`)
-  console.log(`[assignOptimalModel] All models:`, available.map(m => `${m.id} (${m.providerId})`).join(', '))
+  console.log(`[assignOptimalModel] Complexity-based fallback: ${available.length} models available`)
   
   let selectedModel: AvailableModel
   
-  // Use round-robin rotation to spread across models
   switch (complexity) {
     case "complex":
-      // For complex tasks: prefer premium, then standard
       if (premiumModels.length > 0) selectedModel = getNextModelInRotation(premiumModels)
       else if (standardModels.length > 0) selectedModel = getNextModelInRotation(standardModels)
       else if (fastModels.length > 0) selectedModel = getNextModelInRotation(fastModels)
       else selectedModel = getNextModelInRotation(available)
       break
     case "medium":
-      // For medium tasks: prefer standard, then fast
       if (standardModels.length > 0) selectedModel = getNextModelInRotation(standardModels)
       else if (fastModels.length > 0) selectedModel = getNextModelInRotation(fastModels)
       else if (premiumModels.length > 0) selectedModel = getNextModelInRotation(premiumModels)
       else selectedModel = getNextModelInRotation(available)
       break
     case "simple":
-      // For simple tasks: prefer fast (cost-efficient)
       if (fastModels.length > 0) selectedModel = getNextModelInRotation(fastModels)
       else if (standardModels.length > 0) selectedModel = getNextModelInRotation(standardModels)
       else if (premiumModels.length > 0) selectedModel = getNextModelInRotation(premiumModels)
       else selectedModel = getNextModelInRotation(available)
       break
     default:
-      // Default: rotate through all available
       selectedModel = getNextModelInRotation(available)
   }
   
-  // Validate selected model is a known valid model
+  // Log warning if model seems suspicious but don't block it
   if (!isValidModel(selectedModel.id)) {
-    console.error(`[assignOptimalModel] Selected invalid model: ${selectedModel.id}, finding alternative`)
-    // Find first valid model with rotation
-    const validModels = available.filter(m => isValidModel(m.id))
-    if (validModels.length > 0) {
-      selectedModel = getNextModelInRotation(validModels)
-    }
+    console.warn(`[assignOptimalModel] Selected model may be unusual: ${selectedModel.id} - proceeding anyway`)
   }
   
-  // Increment usage counter for tracking
   modelUsageCounter.set(selectedModel.id, (modelUsageCounter.get(selectedModel.id) || 0) + 1)
-  
-  console.log(`[assignOptimalModel] ✓ Selected: ${selectedModel.id} (provider: ${selectedModel.providerId}) for complexity: ${complexity}`)
+  console.log(`[assignOptimalModel] ✓ Selected: ${selectedModel.id} (complexity fallback)`)
   
   return selectedModel.id
 }
@@ -2109,7 +2190,7 @@ function parsePlanFromResponse(response: string, projectIdea: string): Execution
       const taskDescription = taskMatch[2].trim()
       
       const { complexity, estimateMinutes } = scoreComplexity(taskDescription)
-      const model = assignOptimalModel(complexity)
+      const model = assignOptimalModel(complexity, undefined, taskName, taskDescription)
       
       const task: ExecutionTask = {
         id: `task-${taskCounter}`,
@@ -2138,7 +2219,7 @@ function parsePlanFromResponse(response: string, projectIdea: string): Execution
       const taskName = words.join(" ") + (words.length < taskDescription.split(/\s+/).length ? "..." : "")
       
       const { complexity, estimateMinutes } = scoreComplexity(taskDescription)
-      const model = assignOptimalModel(complexity)
+      const model = assignOptimalModel(complexity, undefined, taskName, taskDescription)
       
       const task: ExecutionTask = {
         id: `task-${taskCounter}`,
@@ -2317,7 +2398,7 @@ export function generateFallbackPlan(projectIdea: string, availableModels?: Avai
     id: `task-${id}`,
     name,
     description,
-    model: assignOptimalModel(complexity, models),
+    model: assignOptimalModel(complexity, models, name, description),
     complexity,
     estimateMinutes
   })
