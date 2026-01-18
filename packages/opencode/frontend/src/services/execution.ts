@@ -405,13 +405,43 @@ function getDefaultModels(): AvailableModel[] {
 /**
  * Map a model ID to full model configuration
  * Dynamically looks up the provider from cached available models
- * Throws error if model is not in the available models list
+ * Prefers native providers (e.g., OpenAI for gpt-* models, not GitHub Copilot)
  */
 function getModelConfig(modelName: string): { providerID: string; modelID: string } {
   // Look up from cached available models
   if (cachedAvailableModels) {
-    const model = cachedAvailableModels.find(m => m.id === modelName)
-    if (model) {
+    // Find all models with this ID (might be available from multiple providers)
+    const matchingModels = cachedAvailableModels.filter(m => m.id === modelName)
+    
+    if (matchingModels.length > 0) {
+      // Prefer native provider for the model type
+      const nativeProviderMap: Record<string, string[]> = {
+        "gpt": ["openai"],
+        "o1": ["openai"],
+        "o3": ["openai"],
+        "claude": ["anthropic"],
+        "gemini": ["google"],
+        "copilot": ["github", "github-copilot"],
+        "zen": ["zen", "opencode"],
+      }
+      
+      // Find native provider for this model
+      for (const [prefix, nativeProviders] of Object.entries(nativeProviderMap)) {
+        if (modelName.toLowerCase().startsWith(prefix)) {
+          // Look for a model from the native provider
+          const nativeModel = matchingModels.find(m => 
+            nativeProviders.includes(m.providerId.toLowerCase())
+          )
+          if (nativeModel) {
+            console.log(`[getModelConfig] Using native provider ${nativeModel.providerId} for ${modelName}`)
+            return { providerID: nativeModel.providerId, modelID: nativeModel.id }
+          }
+        }
+      }
+      
+      // No native provider found, use first available
+      const model = matchingModels[0]!
+      console.log(`[getModelConfig] Using provider ${model.providerId} for ${modelName}`)
       return { providerID: model.providerId, modelID: model.id }
     }
   }
@@ -419,12 +449,15 @@ function getModelConfig(modelName: string): { providerID: string; modelID: strin
   // If not in cache, try common provider prefixes as heuristic
   // This handles cases where models haven't been cached yet
   if (modelName.startsWith("gpt-") || modelName.startsWith("o1") || modelName.startsWith("o3")) {
+    console.log(`[getModelConfig] Heuristic: Using OpenAI provider for ${modelName}`)
     return { providerID: "openai", modelID: modelName }
   }
   if (modelName.startsWith("claude")) {
+    console.log(`[getModelConfig] Heuristic: Using Anthropic provider for ${modelName}`)
     return { providerID: "anthropic", modelID: modelName }
   }
   if (modelName.startsWith("gemini")) {
+    console.log(`[getModelConfig] Heuristic: Using Google provider for ${modelName}`)
     return { providerID: "google", modelID: modelName }
   }
   if (modelName.includes("copilot")) {
@@ -1878,8 +1911,69 @@ function scoreComplexity(description: string): { complexity: string; estimateMin
 }
 
 /**
+ * Track model usage for diversity - rotate through available models
+ */
+const modelUsageCounter = new Map<string, number>()
+
+/**
+ * Get the least-used model from a list, promoting diversity
+ */
+function getLeastUsedModel(models: AvailableModel[]): AvailableModel {
+  if (models.length === 0) throw new Error("No models provided")
+  if (models.length === 1) return models[0]!
+  
+  // Sort by usage count (ascending), then by name for determinism
+  const sorted = [...models].sort((a, b) => {
+    const usageA = modelUsageCounter.get(a.id) || 0
+    const usageB = modelUsageCounter.get(b.id) || 0
+    if (usageA !== usageB) return usageA - usageB
+    return a.id.localeCompare(b.id)
+  })
+  
+  return sorted[0]!
+}
+
+/**
+ * Prefer native provider models over proxied ones
+ * E.g., prefer OpenAI's gpt-4o over GitHub Copilot's gpt-4o
+ */
+function preferNativeProvider(models: AvailableModel[]): AvailableModel[] {
+  // Map model IDs to their "native" provider
+  const nativeProviders: Record<string, string[]> = {
+    "gpt": ["openai"],
+    "o1": ["openai"],
+    "o3": ["openai"],
+    "claude": ["anthropic"],
+    "gemini": ["google"],
+    "copilot": ["github", "github-copilot"],
+    "zen": ["zen", "opencode"],
+  }
+  
+  return models.map(model => {
+    // Find native provider for this model type
+    for (const [prefix, providers] of Object.entries(nativeProviders)) {
+      if (model.id.toLowerCase().startsWith(prefix)) {
+        // Check if current provider is native
+        if (!providers.includes(model.providerId.toLowerCase())) {
+          // Not native - mark with lower priority by returning with modified tier
+          // This is a soft preference, not a hard filter
+          return { ...model, _isProxy: true }
+        }
+      }
+    }
+    return { ...model, _isProxy: false }
+  }).sort((a, b) => {
+    // Sort non-proxy models first
+    const aProxy = (a as any)._isProxy ? 1 : 0
+    const bProxy = (b as any)._isProxy ? 1 : 0
+    return aProxy - bProxy
+  }) as AvailableModel[]
+}
+
+/**
  * Assign optimal model based on task complexity and available models
  * Dynamically selects from actually available/configured models
+ * Uses rotation to spread load across models for diversity
  * Throws error if no models are available - never falls back to hardcoded lists
  */
 function assignOptimalModel(complexity: string, availableModels?: AvailableModel[]): string {
@@ -1888,7 +1982,6 @@ function assignOptimalModel(complexity: string, availableModels?: AvailableModel
   
   // Debug logging
   console.log(`[assignOptimalModel] Complexity: ${complexity}, Available models: ${available.length}`)
-  console.log(`[assignOptimalModel] Model list:`, available.map(m => ({ id: m.id, tier: m.tier, provider: m.providerId })))
   
   // If no available models, throw error - don't use hardcoded fallbacks
   if (available.length === 0) {
@@ -1899,60 +1992,62 @@ function assignOptimalModel(complexity: string, availableModels?: AvailableModel
     )
   }
   
-  // Find best model for complexity from available models
-  const premiumModels = available.filter(m => m.tier === "premium")
-  const standardModels = available.filter(m => m.tier === "standard")
-  const fastModels = available.filter(m => m.tier === "fast")
+  // Apply native provider preference
+  const preferredModels = preferNativeProvider(available)
   
-  console.log(`[assignOptimalModel] By tier - Premium: ${premiumModels.length}, Standard: ${standardModels.length}, Fast: ${fastModels.length}`)
+  // Find models by tier
+  const premiumModels = preferredModels.filter(m => m.tier === "premium")
+  const standardModels = preferredModels.filter(m => m.tier === "standard")
+  const fastModels = preferredModels.filter(m => m.tier === "fast")
   
-  let selectedModel: string
+  console.log(`[assignOptimalModel] By tier - Premium: ${premiumModels.map(m => m.id)}, Standard: ${standardModels.map(m => m.id)}, Fast: ${fastModels.map(m => m.id)}`)
+  
+  let selectedModel: AvailableModel
   
   switch (complexity) {
     case "complex":
-      // Prefer standard tier for complex tasks (good balance)
-      // Premium only if no standard available
-      if (standardModels.length > 0) selectedModel = standardModels[0]!.id
-      else if (premiumModels.length > 0) selectedModel = premiumModels[0]!.id
-      else if (fastModels.length > 0) selectedModel = fastModels[0]!.id
-      else selectedModel = available[0]!.id
+      // For complex tasks: prefer premium, then standard
+      if (premiumModels.length > 0) selectedModel = getLeastUsedModel(premiumModels)
+      else if (standardModels.length > 0) selectedModel = getLeastUsedModel(standardModels)
+      else if (fastModels.length > 0) selectedModel = getLeastUsedModel(fastModels)
+      else selectedModel = getLeastUsedModel(preferredModels)
       break
     case "medium":
-      // Prefer standard tier, fall back to premium or fast
-      if (standardModels.length > 0) selectedModel = standardModels[0]!.id
-      else if (premiumModels.length > 0) selectedModel = premiumModels[0]!.id
-      else if (fastModels.length > 0) selectedModel = fastModels[0]!.id
-      else selectedModel = available[0]!.id
+      // For medium tasks: prefer standard, then fast
+      if (standardModels.length > 0) selectedModel = getLeastUsedModel(standardModels)
+      else if (fastModels.length > 0) selectedModel = getLeastUsedModel(fastModels)
+      else if (premiumModels.length > 0) selectedModel = getLeastUsedModel(premiumModels)
+      else selectedModel = getLeastUsedModel(preferredModels)
       break
     case "simple":
-      // Prefer fast tier for simple tasks (cost-efficient)
-      if (fastModels.length > 0) selectedModel = fastModels[0]!.id
-      else if (standardModels.length > 0) selectedModel = standardModels[0]!.id
-      else if (premiumModels.length > 0) selectedModel = premiumModels[0]!.id
-      else selectedModel = available[0]!.id
+      // For simple tasks: prefer fast (cost-efficient)
+      if (fastModels.length > 0) selectedModel = getLeastUsedModel(fastModels)
+      else if (standardModels.length > 0) selectedModel = getLeastUsedModel(standardModels)
+      else if (premiumModels.length > 0) selectedModel = getLeastUsedModel(premiumModels)
+      else selectedModel = getLeastUsedModel(preferredModels)
       break
     default:
-      // Default to best available
-      if (standardModels.length > 0) selectedModel = standardModels[0]!.id
-      else if (fastModels.length > 0) selectedModel = fastModels[0]!.id
-      else if (premiumModels.length > 0) selectedModel = premiumModels[0]!.id
-      else selectedModel = available[0]!.id
+      // Default: rotate through all available
+      selectedModel = getLeastUsedModel(preferredModels)
   }
   
   // Validate selected model is a known valid model
-  if (!isValidModel(selectedModel)) {
-    console.error(`[assignOptimalModel] Selected invalid model: ${selectedModel}, falling back to first available`)
-    // Find first valid model
-    for (const m of available) {
-      if (isValidModel(m.id)) {
-        selectedModel = m.id
-        break
-      }
+  if (!isValidModel(selectedModel.id)) {
+    console.error(`[assignOptimalModel] Selected invalid model: ${selectedModel.id}, finding alternative`)
+    // Find first valid model with least usage
+    const validModels = preferredModels.filter(m => isValidModel(m.id))
+    if (validModels.length > 0) {
+      selectedModel = getLeastUsedModel(validModels)
     }
   }
   
-  console.log(`[assignOptimalModel] Selected model: ${selectedModel} for complexity: ${complexity}`)
-  return selectedModel
+  // Increment usage counter
+  modelUsageCounter.set(selectedModel.id, (modelUsageCounter.get(selectedModel.id) || 0) + 1)
+  
+  console.log(`[assignOptimalModel] Selected: ${selectedModel.id} (provider: ${selectedModel.providerId}) for complexity: ${complexity}`)
+  console.log(`[assignOptimalModel] Usage counts:`, Object.fromEntries(modelUsageCounter))
+  
+  return selectedModel.id
 }
 
 /**
