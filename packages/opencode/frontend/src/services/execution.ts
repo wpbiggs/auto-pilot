@@ -209,9 +209,12 @@ let cachedAvailableModels: AvailableModel[] | null = null
  * Used for internal operations like prompt engineering and planning
  * Returns model config from cached available models
  */
-async function getBestAvailableModelConfig(complexity: "fast" | "standard" | "premium" = "standard"): Promise<{ providerID: string; modelID: string }> {
-  if (!cachedAvailableModels) {
-    await fetchAvailableModels();
+function getBestAvailableModelConfig(complexity: "fast" | "standard" | "premium" = "standard"): { providerID: string; modelID: string } {
+  if (!cachedAvailableModels || cachedAvailableModels.length === 0) {
+    throw new Error(
+      "[getBestAvailableModelConfig] No cached models available. " +
+      "Please call fetchAvailableModels() first to populate the model cache."
+    )
   }
   
   const available = cachedAvailableModels.filter(m => m.available)
@@ -491,15 +494,24 @@ Provide ONLY the engineered prompt text that should be sent to the target model.
 The prompt should be comprehensive yet focused, guiding the AI to produce excellent, production-ready code.`
 
     // Use the best available standard-tier model for prompt engineering
-    const modelConfig = await getBestAvailableModelConfig("standard")
+    const modelConfig = getBestAvailableModelConfig("standard")
     
-    const response = await client.session.prompt({
-      path: { id: sessionId },
-      body: {
-        model: modelConfig,
-        parts: [{ type: "text" as const, text: engineeringPrompt }]
-      }
+    // Wrap with timeout (2 minute timeout for prompt engineering)
+    const PROMPT_ENGINEERING_TIMEOUT_MS = 2 * 60 * 1000
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error("Prompt engineering timed out after 2 minutes")), PROMPT_ENGINEERING_TIMEOUT_MS)
     })
+    
+    const response = await Promise.race([
+      client.session.prompt({
+        path: { id: sessionId },
+        body: {
+          model: modelConfig,
+          parts: [{ type: "text" as const, text: engineeringPrompt }]
+        }
+      }),
+      timeoutPromise
+    ])
 
     const engineeredPrompt = extractResponseText(response)
     
@@ -1018,18 +1030,27 @@ export function createExecutionService(
         phaseContext
       })
 
-      // Execute via SDK session.prompt
+      // Execute via SDK session.prompt with timeout to prevent hanging
       emitLog("info", `Executing with ${modelConfig.modelID}...`)
       taskStates.set(task.id, { status: "running", progress: 50 })
       onUpdate(getStatus(), null)
 
-      const response = await client!.session.prompt({
-        path: { id: sessionId },
-        body: {
-          model: modelConfig,
-          parts: [{ type: "text" as const, text: prompt }]
-        }
+      // Wrap prompt call with timeout (5 minute timeout for long-running tasks)
+      const TASK_TIMEOUT_MS = 5 * 60 * 1000 // 5 minutes
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error("Task execution timed out after 5 minutes")), TASK_TIMEOUT_MS)
       })
+
+      const response = await Promise.race([
+        client!.session.prompt({
+          path: { id: sessionId },
+          body: {
+            model: modelConfig,
+            parts: [{ type: "text" as const, text: prompt }]
+          }
+        }),
+        timeoutPromise
+      ])
 
       // Extract output
       const output = extractResponseText(response)
@@ -1219,18 +1240,27 @@ export function createExecutionService(
         escalationLevel
       )
 
-      // Execute via SDK session.prompt
+      // Execute via SDK session.prompt with timeout to prevent hanging
       emitLog("info", `Executing escalation with ${modelConfig.modelID}...`)
       taskStates.set(task.id, { status: "running", progress: 50 })
       onUpdate(getStatus(), null)
 
-      const response = await client!.session.prompt({
-        path: { id: sessionId },
-        body: {
-          model: modelConfig,
-          parts: [{ type: "text" as const, text: prompt }]
-        }
+      // Wrap prompt call with timeout (5 minute timeout for escalated tasks)
+      const ESCALATION_TIMEOUT_MS = 5 * 60 * 1000 // 5 minutes
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error("Escalated task execution timed out after 5 minutes")), ESCALATION_TIMEOUT_MS)
       })
+
+      const response = await Promise.race([
+        client!.session.prompt({
+          path: { id: sessionId },
+          body: {
+            model: modelConfig,
+            parts: [{ type: "text" as const, text: prompt }]
+          }
+        }),
+        timeoutPromise
+      ])
 
       // Extract output
       const output = extractResponseText(response)
@@ -1876,17 +1906,26 @@ Generate a realistic and actionable plan that an AI coding assistant can execute
   // Fetch available models from SDK before model selection
   await fetchAvailableModels();
   // Use the best available standard-tier model for plan generation
-  const modelConfig = await getBestAvailableModelConfig("standard")
+  const modelConfig = getBestAvailableModelConfig("standard")
   
-  // Call the SDK to generate the plan
+  // Call the SDK to generate the plan with timeout (3 minute timeout for planning)
   console.log("[analyzeAndPlanWithSDK] Using model config:", modelConfig)
-  const response = await client.session.prompt({
-    path: { id: sessionId },
-    body: {
-      model: modelConfig,
-      parts: [{ type: "text" as const, text: planningPrompt }]
-    }
+  
+  const PLANNING_TIMEOUT_MS = 3 * 60 * 1000
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    setTimeout(() => reject(new Error("Plan generation timed out after 3 minutes")), PLANNING_TIMEOUT_MS)
   })
+  
+  const response = await Promise.race([
+    client.session.prompt({
+      path: { id: sessionId },
+      body: {
+        model: modelConfig,
+        parts: [{ type: "text" as const, text: planningPrompt }]
+      }
+    }),
+    timeoutPromise
+  ])
   
   console.log("[analyzeAndPlanWithSDK] Raw response:", JSON.stringify(response, null, 2))
   const responseText = extractResponseText(response)

@@ -140,7 +140,7 @@ function ModelSelector({ value, onChange, disabled, availableModels, recommended
             value={model.id}
             disabled={!model.available}
           >
-            {model.name} {!model.available ? "(unavailable)" : ""}
+            {model.providerName || model.providerId || "Unknown"} - {model.name} {!model.available ? "(unavailable)" : ""}
           </option>
         ))}
       </select>

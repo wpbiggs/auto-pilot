@@ -46,7 +46,9 @@ function TaskCard({ task }) {
           <span className="font-medium text-white">{task.name}</span>
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-sm text-gray-400 font-mono">{task.model}</span>
+          <span className="text-sm text-gray-400 font-mono">
+            {task.providerName ? `${task.providerName} - ${task.model}` : task.model}
+          </span>
           {(task.output || task.error) && (
             <button
               onClick={() => setShowOutput(!showOutput)}
