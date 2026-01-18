@@ -79,6 +79,7 @@ export namespace Server {
   export const App: () => Hono = lazy(
     () =>
       // TODO: Break server.ts into smaller route files to fix type inference
+      // @ts-ignore - Type instantiation is excessively deep, but code is correct
       app
         .onError((err, c) => {
           log.error("failed", {

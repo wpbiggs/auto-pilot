@@ -24,6 +24,9 @@ const TaskAnalysisResult = z.object({
 export type TaskAnalysis = z.infer<typeof TaskAnalysisResult>
 
 export namespace AutoSelector {
+  // Re-export TaskAnalysis type within namespace for external access
+  export type TaskAnalysis = z.infer<typeof TaskAnalysisResult>
+  
   const log = Log.create({ service: "auto-selector" })
 
   const TASK_ANALYSIS_PROMPT = `
@@ -109,7 +112,15 @@ Analyze the user request and provide your recommendations in the specified JSON 
     taskAnalysis: TaskAnalysis,
   ): Promise<{ providerID: string; modelID: string }> {
     const config = await Config.get()
-    const availableModels = await Provider.listModels()
+    const providers = await Provider.list()
+    
+    // Collect all available models from providers
+    const availableModels: Array<{ providerID: string; modelID: string }> = []
+    for (const [providerID, provider] of Object.entries(providers)) {
+      for (const modelID of Object.keys(provider.models)) {
+        availableModels.push({ providerID, modelID })
+      }
+    }
 
     // Model selection logic based on task analysis
     let targetModel: { providerID: string; modelID: string } | null = null
@@ -117,25 +128,25 @@ Analyze the user request and provide your recommendations in the specified JSON 
     if (taskAnalysis.complexity === "simple") {
       // Prefer smaller/faster models for simple tasks
       targetModel = availableModels.find(
-        (m) =>
+        (m: { providerID: string; modelID: string }) =>
           m.modelID.toLowerCase().includes("haiku") ||
           m.modelID.toLowerCase().includes("flash") ||
           m.modelID.toLowerCase().includes("small"),
-      )
+      ) ?? null
     } else if (taskAnalysis.complexity === "complex") {
       // Prefer larger models for complex tasks
       targetModel = availableModels.find(
-        (m) =>
+        (m: { providerID: string; modelID: string }) =>
           m.modelID.toLowerCase().includes("opus") ||
           m.modelID.toLowerCase().includes("gpt-4") ||
           m.modelID.toLowerCase().includes("large"),
-      )
+      ) ?? null
     }
 
     // If no specific model found, use the suggested model from analysis
     if (!targetModel && taskAnalysis.suggestedModel) {
       const suggested = availableModels.find(
-        (m) =>
+        (m: { providerID: string; modelID: string }) =>
           m.providerID === taskAnalysis.suggestedModel.providerID && m.modelID === taskAnalysis.suggestedModel.modelID,
       )
       if (suggested) targetModel = suggested

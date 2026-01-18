@@ -218,7 +218,7 @@ export namespace Integrations {
     const token = config.github?.token?.trim() ?? ""
     if (!repo) return listGitHub(projectID)
 
-    const headers = token ? { Authorization: `Bearer ${token}` } : {}
+    const headers: HeadersInit = token ? { Authorization: `Bearer ${token}` } : {}
     const url = `https://api.github.com/repos/${repo}/issues?state=all&per_page=50`
     const response = await fetch(url, { headers })
     if (!response.ok) throw new Error("Failed to sync GitHub")
@@ -248,7 +248,7 @@ export namespace Integrations {
     const token = config.gitlab?.token?.trim() ?? ""
     if (!project) return listGitLab(projectID)
 
-    const headers = token ? { "PRIVATE-TOKEN": token } : {}
+    const headers: HeadersInit = token ? { "PRIVATE-TOKEN": token } : {}
     const encoded = encodeURIComponent(project)
     const issueUrl = `${host}/api/v4/projects/${encoded}/issues?per_page=50`
     const mergeUrl = `${host}/api/v4/projects/${encoded}/merge_requests?per_page=50`

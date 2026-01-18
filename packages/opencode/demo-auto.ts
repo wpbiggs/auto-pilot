@@ -33,7 +33,7 @@ async function demoAutoSelection() {
       console.log(`🔄 Multiple Steps: ${analysis.requiresMultipleSteps ? "Yes" : "No"}`)
       console.log(`📝 Reasoning: ${analysis.suggestedModel.reasoning}`)
     } catch (error) {
-      console.log(`❌ Error analyzing task: ${error.message}`)
+      console.log(`❌ Error analyzing task: ${error instanceof Error ? error.message : String(error)}`)
       console.log("💡 This is expected in CI/demo environment without full API setup")
     }
   }
