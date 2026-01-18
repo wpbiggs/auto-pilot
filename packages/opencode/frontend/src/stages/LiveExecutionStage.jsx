@@ -394,7 +394,7 @@ export function LiveExecutionStage({ plan, onComplete, onBack }) {
                          hover:bg-blue-700 transition-all transform hover:scale-105 
                          shadow-lg shadow-blue-500/25"
             >
-              Start Another Project →
+              Preview Project
             </button>
           </div>
         )}
