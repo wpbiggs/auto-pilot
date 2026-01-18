@@ -232,12 +232,18 @@ function PromptEditorModal({ task, prompt, defaultPrompt, onSave, onClose }) {
 }
 
 // Task Configuration Panel (inline expandable)
-function TaskConfigPanel({ task, config, defaultPrompt, onConfigChange, onEditPrompt, availableModels }) {
+function TaskConfigPanel({ task, config, defaultPrompt, onConfigChange, onEditPrompt, onDeleteTask, availableModels }) {
   const isModelModified = config.model !== task.model
   const isPromptModified = config.prompt !== defaultPrompt
 
   const handleResetModel = () => {
     onConfigChange({ ...config, model: task.model })
+  }
+  
+  const handleDeleteTask = () => {
+    if (window.confirm(`Are you sure you want to remove "${task.name}"? This cannot be undone.`)) {
+      onDeleteTask(task.id)
+    }
   }
 
   return (
@@ -287,6 +293,18 @@ function TaskConfigPanel({ task, config, defaultPrompt, onConfigChange, onEditPr
         <span className="text-xs text-gray-500">
           {config.prompt.length} chars
         </span>
+      </div>
+      
+      {/* Delete Task Button */}
+      <div className="flex items-center justify-end pt-2 border-t border-gray-700">
+        <button
+          onClick={handleDeleteTask}
+          className="px-3 py-1.5 rounded text-xs bg-red-900/50 hover:bg-red-800 
+                     text-red-300 hover:text-red-100 transition-colors flex items-center gap-1
+                     border border-red-800/50 hover:border-red-700"
+        >
+          🗑️ Remove Task
+        </button>
       </div>
     </div>
   )
@@ -429,6 +447,38 @@ export function AIPlanningStage({ idea, onApprove, onBack }) {
       ...prev,
       [taskId]: { ...prev[taskId], ...newConfig }
     }))
+  }
+
+  const deleteTask = (taskId) => {
+    if (!plan) return
+    
+    // Remove task from plan
+    const updatedTasks = plan.tasks.filter(t => t.id !== taskId)
+    const updatedPhases = plan.phases.map(phase => ({
+      ...phase,
+      tasks: phase.tasks.filter(t => t.id !== taskId)
+    })).filter(phase => phase.tasks.length > 0) // Remove empty phases
+    
+    setPlan({
+      ...plan,
+      tasks: updatedTasks,
+      phases: updatedPhases,
+      totalEstimateMinutes: updatedTasks.reduce((sum, t) => sum + t.estimateMinutes, 0)
+    })
+    
+    // Remove from configs
+    setTaskConfigs(prev => {
+      const next = { ...prev }
+      delete next[taskId]
+      return next
+    })
+    
+    // Remove from expanded
+    setExpandedConfigs(prev => {
+      const next = new Set(prev)
+      next.delete(taskId)
+      return next
+    })
   }
 
   const resetAllConfigs = () => {
@@ -773,6 +823,7 @@ export function AIPlanningStage({ idea, onApprove, onBack }) {
                             availableModels={availableModels}
                             onConfigChange={(newConfig) => updateTaskConfig(task.id, newConfig)}
                             onEditPrompt={() => setEditingPromptTask(task)}
+                            onDeleteTask={deleteTask}
                           />
                         )}
                       </div>

@@ -276,11 +276,30 @@ function getClient(baseUrl?: string) {
 
 /**
  * Fetch available models from the OpenCode SDK
- * Throws error if no models are available - never falls back to hardcoded lists
+ * Handles server errors gracefully - throws descriptive error on failure
  */
 export async function fetchAvailableModels(baseUrl?: string): Promise<AvailableModel[]> {
   const client = getClient(baseUrl)
-  const response = await client.provider.list()
+  
+  let response
+  try {
+    response = await client.provider.list()
+  } catch (error: any) {
+    // Handle HTTP errors like 500
+    const statusCode = error?.response?.status || error?.status || "unknown"
+    const errorMessage = error?.response?.data?.message || error?.message || "Unknown error"
+    
+    if (statusCode === 500 || String(statusCode).startsWith("5")) {
+      throw new Error(
+        `[ExecutionService] Provider endpoint returned server error (${statusCode}). ` +
+        `The OpenCode server may be experiencing issues. Error: ${errorMessage}`
+      )
+    }
+    
+    throw new Error(
+      `[ExecutionService] Failed to fetch providers: ${errorMessage} (status: ${statusCode})`
+    )
+  }
   
   if (!response.data) {
     throw new Error("[ExecutionService] No provider data returned from OpenCode SDK")
@@ -928,6 +947,7 @@ export function createExecutionService(
   const taskRetries = new Map<string, number>()
   const taskEscalations = new Map<string, number>() // Track escalation count per task
   const taskEscalationHistory = new Map<string, Array<{model: string, error: string, output: string}>>()
+  const executingTasks = new Set<string>() // Lock to prevent duplicate parallel execution
   
   // Initialize all tasks as queued
   plan.tasks.forEach(task => {
@@ -988,6 +1008,20 @@ export function createExecutionService(
   }
 
   const executeTask = async (task: ExecutionTask): Promise<void> => {
+    // CRITICAL: Check if task is already completed/failed/running - prevent re-execution
+    const currentState = taskStates.get(task.id)
+    if (currentState?.status === "completed" || currentState?.status === "failed") {
+      console.log(`[ExecutionService] Skipping task ${task.id} - already ${currentState.status}`)
+      return
+    }
+    
+    // CRITICAL: Prevent duplicate parallel execution with lock
+    if (executingTasks.has(task.id)) {
+      console.warn(`[ExecutionService] Task ${task.id} is already executing - skipping duplicate`)
+      return
+    }
+    executingTasks.add(task.id)
+    
     const startTime = Date.now()
     
     // Get phase context for tailored prompts
@@ -1086,13 +1120,38 @@ export function createExecutionService(
         cost: estimatedCost,
       })
       emitLog("success", `Completed: ${task.name} (${Math.round(duration / 1000)}s)`)
+      
+      // Release execution lock
+      executingTasks.delete(task.id)
 
     } catch (error: any) {
       const duration = Date.now() - startTime
       console.error(`[ExecutionService] Task ${task.id} failed:`, error)
       
+      // Release execution lock immediately to prevent hanging
+      executingTasks.delete(task.id)
+      
       const failedOutput = taskStates.get(task.id)?.output || ""
       const errorMessage = error.message || "Unknown error"
+      const isTimeout = errorMessage.includes("timed out")
+      
+      // If it's a timeout, immediately mark as failed and DON'T retry/escalate
+      // The underlying SDK call may still be running, but we move on
+      if (isTimeout) {
+        emitLog("error", `⏱️ TIMEOUT: ${task.name} - marking as failed and moving to next task`)
+        taskStates.set(task.id, {
+          status: "failed",
+          progress: 0,
+          error: errorMessage,
+          duration,
+        })
+        onUpdate(getStatus(), { 
+          type: "task_failed", 
+          taskId: task.id,
+          error: errorMessage,
+        })
+        return // Exit immediately, don't retry or escalate timeouts
+      }
       
       // Record in escalation history
       const history = taskEscalationHistory.get(task.id) || []
@@ -1105,8 +1164,13 @@ export function createExecutionService(
         taskRetries.set(task.id, retries + 1)
         emitLog("warning", `Retrying ${task.name} (attempt ${retries + 2}/${config.maxRetries + 1})`)
         
-        // Reset to queued for retry
+        // Reset to queued for retry - but DON'T recursively call, let main loop pick it up
         taskStates.set(task.id, { status: "queued", progress: 0 })
+        // Re-add to allow retry by removing from executing set
+        executingTasks.delete(task.id)
+        // Wait a moment before retry
+        await new Promise(r => setTimeout(r, 1000))
+        // Now execute retry inline (not recursive since we cleared the lock)
         await executeTask(task)
         return
       }
@@ -1393,6 +1457,13 @@ export function createExecutionService(
         while (paused) {
           await new Promise(r => setTimeout(r, 100))
           if (!running) break
+        }
+
+        // CRITICAL: Skip tasks that are already completed or failed
+        const taskState = taskStates.get(task.id)
+        if (taskState?.status === "completed" || taskState?.status === "failed") {
+          console.log(`[ExecutionService] Skipping task ${task.id} in main loop - already ${taskState.status}`)
+          continue
         }
 
         await executeTask(task)
