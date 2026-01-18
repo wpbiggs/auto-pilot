@@ -25,3 +25,8 @@ target
 opencode-dev
 logs/
 *.bun-build
+
+# SQLite database files (local only)
+packages/opencode/data/opencode.db
+packages/opencode/data/opencode.db-shm
+packages/opencode/data/opencode.db-wal
