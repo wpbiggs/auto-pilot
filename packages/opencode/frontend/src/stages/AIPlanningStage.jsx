@@ -4,7 +4,12 @@
  */
 
 import { useState, useEffect } from "react"
-import { fetchAvailableModels, checkSDKConnection } from "../services/execution"
+import { 
+  fetchAvailableModels, 
+  checkSDKConnection, 
+  analyzeAndPlanWithSDK,
+  generateFallbackPlan 
+} from "../services/execution"
 
 // Fallback models when SDK is not available
 const DEFAULT_MODELS = [
@@ -16,6 +21,7 @@ const DEFAULT_MODELS = [
 ]
 
 const LOADING_MESSAGES = [
+  "Connecting to AI planning service...",
   "Analyzing your project requirements...",
   "Breaking down into features...",
   "Designing the architecture...",
@@ -25,47 +31,19 @@ const LOADING_MESSAGES = [
   "Finalizing execution plan..."
 ]
 
-// Mock AI planner for demonstration
-async function analyzeAndPlan(idea) {
-  // Simulate API delay
-  await new Promise(resolve => setTimeout(resolve, 3000))
-  
-  // Generate a mock plan based on the idea
-  const words = idea.split(" ")
-  const projectName = words.slice(0, 3).join(" ") + " Project"
-  
-  return {
-    projectName,
-    description: idea,
-    phases: [
-      {
-        id: "foundation",
-        name: "Foundation",
-        tasks: [
-          { id: "t1", name: "Project Setup", complexity: "simple", model: "gpt-4o-mini", estimateMinutes: 5, description: "Initialize project structure and dependencies" },
-          { id: "t2", name: "Core Architecture", complexity: "medium", model: "claude-sonnet", estimateMinutes: 15, description: "Design and implement core system architecture" },
-        ]
-      },
-      {
-        id: "core",
-        name: "Core Features",
-        tasks: [
-          { id: "t3", name: "Main Feature Implementation", complexity: "complex", model: "claude-sonnet", estimateMinutes: 30, description: "Implement primary functionality" },
-          { id: "t4", name: "Data Layer", complexity: "medium", model: "gpt-4o", estimateMinutes: 20, description: "Set up database models and data access" },
-        ]
-      },
-      {
-        id: "polish",
-        name: "Polish & Testing",
-        tasks: [
-          { id: "t5", name: "Error Handling", complexity: "simple", model: "gpt-4o-mini", estimateMinutes: 10, description: "Add comprehensive error handling" },
-          { id: "t6", name: "Testing", complexity: "medium", model: "claude-sonnet", estimateMinutes: 20, description: "Write unit and integration tests" },
-        ]
-      }
-    ],
-    tasks: [],
-    totalEstimateMinutes: 100,
-    estimatedCost: 0.85
+/**
+ * Analyze project idea and generate execution plan
+ * Uses real SDK when available, falls back to heuristic planning
+ */
+async function analyzeAndPlan(idea, isSDKConnected) {
+  if (isSDKConnected) {
+    // Use real AI-powered planning via OpenCode SDK
+    return await analyzeAndPlanWithSDK(idea)
+  } else {
+    // Use fallback heuristic-based planning
+    // Add small delay to simulate processing for better UX
+    await new Promise(resolve => setTimeout(resolve, 1500))
+    return generateFallbackPlan(idea)
   }
 }
 
@@ -347,6 +325,7 @@ export function AIPlanningStage({ idea, onApprove, onBack }) {
         }
       } catch (err) {
         console.error("[AIPlanningStage] Failed to load models:", err)
+        setSdkConnected(false)
         setAvailableModels(DEFAULT_MODELS)
       }
     }
@@ -392,20 +371,25 @@ export function AIPlanningStage({ idea, onApprove, onBack }) {
     }
   }, [plan, idea])
 
+  // Generate execution plan when SDK connection status is determined
   useEffect(() => {
+    // Wait until we know the SDK connection status
+    if (sdkConnected === null) return
+
     let messageIndex = 0
     const messageInterval = setInterval(() => {
       messageIndex = (messageIndex + 1) % LOADING_MESSAGES.length
       setLoadingMessage(LOADING_MESSAGES[messageIndex])
     }, 2000)
 
-    analyzeAndPlan(idea)
+    analyzeAndPlan(idea, sdkConnected)
       .then(result => {
         // Flatten tasks from phases
         result.tasks = result.phases.flatMap(p => p.tasks)
         setPlan(result)
       })
       .catch(err => {
+        console.error("[AIPlanningStage] Planning failed:", err)
         setError(err.message || "An unexpected error occurred")
       })
       .finally(() => {
@@ -414,7 +398,7 @@ export function AIPlanningStage({ idea, onApprove, onBack }) {
       })
 
     return () => clearInterval(messageInterval)
-  }, [idea])
+  }, [idea, sdkConnected])
 
   const togglePhase = (phase) => {
     setExpandedPhases(prev => {
@@ -642,7 +626,7 @@ export function AIPlanningStage({ idea, onApprove, onBack }) {
             <span>
               {sdkConnected 
                 ? `Connected to OpenCode SDK - ${availableModels.filter(m => m.available).length} models available`
-                : "Demo Mode - SDK not connected. Execution will be simulated."
+                : "Offline Mode - Using heuristic planning. Connect SDK for AI-powered planning."
               }
             </span>
           </div>

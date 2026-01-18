@@ -160,10 +160,13 @@ const PROVIDER_NAMES: Record<string, string> = {
 
 /**
  * Get the OpenCode SDK client instance
- * Uses the local OpenCode server running on port 4096 by default
+ * In development, uses empty baseUrl to leverage Vite's proxy configuration
+ * In production or when explicitly configured, uses the provided URL
  */
 function getClient(baseUrl?: string) {
-  const url = baseUrl || import.meta.env.VITE_OPENCODE_URL || "http://localhost:4096" || 'http://localhost:4096';
+  // Use empty string to leverage Vite proxy in development
+  // The proxy routes /session, /provider, etc. to localhost:4096
+  const url = baseUrl || import.meta.env.VITE_OPENCODE_URL || "";
   return createOpencodeClient({ baseUrl: url })
 }
 
@@ -669,7 +672,7 @@ export function createExecutionService(
       onUpdate(getStatus(), { type: "task_started", taskId: task.id })
       emitLog("info", `Starting task: ${task.name}`)
 
-      // Simulate initial progress
+      // Initial progress - task initialization
       taskStates.set(task.id, { status: "running", progress: 10 })
       onUpdate(getStatus(), null)
 
@@ -1079,10 +1082,11 @@ export function createExecutionService(
 }
 
 /**
- * Mock Execution Service for demo/fallback
- * Used when SDK is not available
+ * Offline Execution Service - SDK Not Available
+ * Provides clear feedback when SDK is not connected
+ * This is NOT a mock - it handles the real case of SDK unavailability
  */
-export function createMockExecutionService(
+export function createOfflineExecutionService(
   plan: ExecutionPlan,
   onUpdate: ExecutionUpdateCallback
 ) {
@@ -1113,15 +1117,32 @@ export function createMockExecutionService(
         ...t,
         ...taskStates.get(t.id)!
       })),
-      totalTokensUsed: completed * 5000,
-      totalCost: completed * 0.05,
-      totalDuration: completed * 30000,
+      totalTokensUsed: 0,
+      totalCost: 0,
+      totalDuration: 0,
     }
   }
 
-  const simulate = async () => {
-    onUpdate(getStatus(), { type: "log", logType: "warning", message: "Running in demo mode (SDK not connected)" })
+  const executeOffline = async () => {
+    onUpdate(getStatus(), { 
+      type: "log", 
+      logType: "warning", 
+      message: "⚠️ OpenCode SDK is not connected. Cannot execute tasks." 
+    })
+    
+    onUpdate(getStatus(), { 
+      type: "log", 
+      logType: "info", 
+      message: "Please ensure the OpenCode server is running at the configured URL." 
+    })
+    
+    onUpdate(getStatus(), { 
+      type: "log", 
+      logType: "info", 
+      message: "Run 'opencode serve' or 'bun dev' in the opencode package to start the server." 
+    })
 
+    // Mark all tasks as failed with helpful message
     for (const task of plan.tasks) {
       if (!running) break
 
@@ -1130,59 +1151,53 @@ export function createMockExecutionService(
         if (!running) break
       }
 
-      // Start task
-      taskStates.set(task.id, { status: "running", progress: 0 })
-      onUpdate(getStatus(), { type: "task_started", taskId: task.id })
-      onUpdate(getStatus(), { type: "log", logType: "info", message: `Started: ${task.name}` })
+      // Small delay between tasks for UI feedback
+      await new Promise(r => setTimeout(r, 500))
 
-      // Simulate progress
-      for (let progress = 0; progress <= 100; progress += 10) {
-        if (!running) break
-        while (paused) {
-          await new Promise(r => setTimeout(r, 100))
-          if (!running) break
-        }
-
-        taskStates.set(task.id, { status: "running", progress })
-        onUpdate(getStatus(), null)
-        await new Promise(r => setTimeout(r, 200))
-      }
-
-      // Complete task (95% success rate for demo)
-      const success = Math.random() > 0.05
       taskStates.set(task.id, {
-        status: success ? "completed" : "failed",
-        progress: 100,
-        output: success ? `Mock output for ${task.name}` : undefined,
-        error: success ? undefined : "Simulated failure",
+        status: "failed",
+        progress: 0,
+        error: "SDK not connected - start the OpenCode server to execute this task",
       })
 
       onUpdate(getStatus(), {
-        type: success ? "task_completed" : "task_failed",
-        taskId: task.id
-      })
-      onUpdate(getStatus(), { 
-        type: "log", 
-        logType: success ? "success" : "error", 
-        message: success ? `Completed: ${task.name}` : `Failed: ${task.name}` 
+        type: "task_failed",
+        taskId: task.id,
+        error: "SDK not connected"
       })
     }
 
     onUpdate(getStatus(), { type: "execution_completed" })
-    onUpdate(getStatus(), { type: "log", logType: "success", message: "All tasks completed!" })
+    onUpdate(getStatus(), { 
+      type: "log", 
+      logType: "error", 
+      message: "Execution failed - SDK connection required. Please start the OpenCode server and try again." 
+    })
   }
 
-  // Start simulation
-  simulate()
+  // Start offline handling
+  executeOffline()
 
   return {
-    pause: () => { paused = true },
-    resume: () => { paused = false },
-    cancel: () => { running = false },
+    pause: () => { 
+      paused = true 
+      onUpdate(getStatus(), { type: "log", logType: "info", message: "Execution paused" })
+    },
+    resume: () => { 
+      paused = false 
+      onUpdate(getStatus(), { type: "log", logType: "info", message: "Execution resumed" })
+    },
+    cancel: () => { 
+      running = false 
+      onUpdate(getStatus(), { type: "log", logType: "warning", message: "Execution cancelled" })
+    },
     isPaused: () => paused,
     getStatus,
   }
 }
+
+// Keep the old name as an alias for backward compatibility
+export const createMockExecutionService = createOfflineExecutionService
 
 /**
  * Check if OpenCode SDK is available
@@ -1194,5 +1209,488 @@ export async function checkSDKConnection(baseUrl?: string): Promise<boolean> {
     return response.data !== undefined
   } catch {
     return false
+  }
+}
+
+/**
+ * Complexity scoring based on task description heuristics
+ */
+function scoreComplexity(description: string): { complexity: string; estimateMinutes: number } {
+  const lowerDesc = description.toLowerCase()
+  
+  // Complex indicators
+  const complexIndicators = [
+    "authentication", "security", "encryption", "oauth", "jwt",
+    "database", "migration", "schema", "orm", "transaction",
+    "real-time", "websocket", "streaming", "cache", "redis",
+    "deployment", "ci/cd", "docker", "kubernetes", "infrastructure",
+    "payment", "billing", "subscription", "integration", "api",
+    "machine learning", "ai", "neural", "algorithm", "optimization"
+  ]
+  
+  // Medium indicators
+  const mediumIndicators = [
+    "component", "form", "validation", "state", "context",
+    "routing", "navigation", "layout", "responsive", "styling",
+    "testing", "unit test", "integration test", "e2e",
+    "error handling", "logging", "monitoring", "analytics"
+  ]
+  
+  // Simple indicators
+  const simpleIndicators = [
+    "setup", "config", "initialize", "boilerplate", "scaffold",
+    "rename", "refactor", "cleanup", "documentation", "readme",
+    "types", "interface", "constant", "utility", "helper"
+  ]
+  
+  let complexScore = 0
+  let mediumScore = 0
+  let simpleScore = 0
+  
+  for (const indicator of complexIndicators) {
+    if (lowerDesc.includes(indicator)) complexScore++
+  }
+  for (const indicator of mediumIndicators) {
+    if (lowerDesc.includes(indicator)) mediumScore++
+  }
+  for (const indicator of simpleIndicators) {
+    if (lowerDesc.includes(indicator)) simpleScore++
+  }
+  
+  // Determine complexity
+  if (complexScore >= 2 || (complexScore >= 1 && lowerDesc.length > 300)) {
+    return { complexity: "complex", estimateMinutes: 30 }
+  } else if (complexScore >= 1 || mediumScore >= 2) {
+    return { complexity: "medium", estimateMinutes: 20 }
+  } else if (mediumScore >= 1) {
+    return { complexity: "medium", estimateMinutes: 15 }
+  } else if (simpleScore >= 1 || lowerDesc.length < 100) {
+    return { complexity: "simple", estimateMinutes: 10 }
+  }
+  
+  return { complexity: "medium", estimateMinutes: 15 }
+}
+
+/**
+ * Assign optimal model based on task complexity
+ */
+function assignOptimalModel(complexity: string): string {
+  switch (complexity) {
+    case "complex":
+      return "claude-sonnet-4-20250514"
+    case "medium":
+      return "claude-sonnet-4-20250514"
+    case "simple":
+      return "claude-3-5-haiku-20241022"
+    default:
+      return "claude-sonnet-4-20250514"
+  }
+}
+
+/**
+ * Parse AI-generated plan from text response
+ */
+function parsePlanFromResponse(response: string, projectIdea: string): ExecutionPlan {
+  const lines = response.split("\n")
+  const tasks: ExecutionTask[] = []
+  const phases: ExecutionPlan["phases"] = []
+  
+  let currentPhase: { id: string; name: string; tasks: ExecutionTask[] } | null = null
+  let taskCounter = 0
+  let phaseCounter = 0
+  
+  for (const line of lines) {
+    const trimmed = line.trim()
+    
+    // Detect phase headers (## Phase: or ### Phase: or **Phase:)
+    const phaseMatch = trimmed.match(/^(?:#{1,3}\s*)?(?:\*\*)?Phase\s*\d*:?\s*(.+?)(?:\*\*)?$/i)
+    if (phaseMatch && phaseMatch[1]) {
+      if (currentPhase && currentPhase.tasks.length > 0) {
+        phases.push(currentPhase)
+      }
+      phaseCounter++
+      currentPhase = {
+        id: `phase-${phaseCounter}`,
+        name: phaseMatch[1].replace(/\*\*/g, "").trim(),
+        tasks: []
+      }
+      continue
+    }
+    
+    // Detect task entries (- Task: or * Task: or numbered list)
+    const taskMatch = trimmed.match(/^(?:[-*]|\d+\.)\s*(?:\*\*)?(.+?)(?:\*\*)?:\s*(.+)$/i)
+    if (taskMatch && taskMatch[1] && taskMatch[2]) {
+      taskCounter++
+      const taskName = taskMatch[1].replace(/\*\*/g, "").trim()
+      const taskDescription = taskMatch[2].trim()
+      
+      const { complexity, estimateMinutes } = scoreComplexity(taskDescription)
+      const model = assignOptimalModel(complexity)
+      
+      const task: ExecutionTask = {
+        id: `task-${taskCounter}`,
+        name: taskName,
+        description: taskDescription,
+        model,
+        complexity,
+        estimateMinutes
+      }
+      
+      tasks.push(task)
+      if (currentPhase) {
+        currentPhase.tasks.push(task)
+      }
+      continue
+    }
+    
+    // Detect simple task entries (just a bullet point with description)
+    const simpleTaskMatch = trimmed.match(/^(?:[-*]|\d+\.)\s*(?:\*\*)?(.{10,})(?:\*\*)?$/)
+    if (simpleTaskMatch && simpleTaskMatch[1] && !trimmed.toLowerCase().includes("phase")) {
+      taskCounter++
+      const taskDescription = simpleTaskMatch[1].replace(/\*\*/g, "").trim()
+      
+      // Generate a task name from the first few words
+      const words = taskDescription.split(/\s+/).slice(0, 4)
+      const taskName = words.join(" ") + (words.length < taskDescription.split(/\s+/).length ? "..." : "")
+      
+      const { complexity, estimateMinutes } = scoreComplexity(taskDescription)
+      const model = assignOptimalModel(complexity)
+      
+      const task: ExecutionTask = {
+        id: `task-${taskCounter}`,
+        name: taskName,
+        description: taskDescription,
+        model,
+        complexity,
+        estimateMinutes
+      }
+      
+      tasks.push(task)
+      if (currentPhase) {
+        currentPhase.tasks.push(task)
+      }
+    }
+  }
+  
+  // Push last phase
+  if (currentPhase && currentPhase.tasks.length > 0) {
+    phases.push(currentPhase)
+  }
+  
+  // If no phases were detected, create default phases
+  if (phases.length === 0 && tasks.length > 0) {
+    const tasksPerPhase = Math.ceil(tasks.length / 3)
+    const phaseNames: string[] = ["Foundation", "Core Implementation", "Polish & Testing"]
+    
+    for (let i = 0; i < 3 && i * tasksPerPhase < tasks.length; i++) {
+      phases.push({
+        id: `phase-${i + 1}`,
+        name: phaseNames[i] ?? `Phase ${i + 1}`,
+        tasks: tasks.slice(i * tasksPerPhase, (i + 1) * tasksPerPhase)
+      })
+    }
+  }
+  
+  // Calculate totals
+  const totalEstimateMinutes = tasks.reduce((sum, t) => sum + t.estimateMinutes, 0)
+  const estimatedCost = tasks.reduce((sum, t) => {
+    const costPerMinute = t.model.includes("opus") ? 0.02 
+      : t.model.includes("sonnet") ? 0.01 
+      : 0.005
+    return sum + (t.estimateMinutes * costPerMinute)
+  }, 0)
+  
+  // Generate project name from idea
+  const words = projectIdea.split(/\s+/).slice(0, 4)
+  const projectName = words.join(" ") + " Project"
+  
+  return {
+    projectName,
+    description: projectIdea,
+    tasks,
+    phases,
+    totalEstimateMinutes,
+    estimatedCost
+  }
+}
+
+/**
+ * Analyze project idea and generate execution plan using OpenCode SDK
+ * This is the real implementation that calls the AI to generate a plan
+ */
+export async function analyzeAndPlanWithSDK(
+  projectIdea: string,
+  baseUrl?: string
+): Promise<ExecutionPlan> {
+  const client = getClient(baseUrl)
+  
+  // Create a planning session
+  const sessionResult = await client.session.create({
+    body: {
+      title: `Planning: ${projectIdea.substring(0, 50)}`
+    }
+  })
+  
+  if (!sessionResult.data?.id) {
+    throw new Error("Failed to create planning session")
+  }
+  
+  const sessionId = sessionResult.data.id
+  
+  // Generate the planning prompt
+  const planningPrompt = `You are an expert software architect and project planner. Analyze the following project idea and create a detailed execution plan.
+
+## Project Idea:
+${projectIdea}
+
+## Your Task:
+Create a comprehensive execution plan that breaks down this project into manageable tasks organized in phases.
+
+## Output Format:
+Provide the plan in the following format:
+
+### Phase 1: Foundation
+- **Task Name 1**: Description of what this task accomplishes
+- **Task Name 2**: Description of what this task accomplishes
+
+### Phase 2: Core Implementation
+- **Task Name 3**: Description of what this task accomplishes
+- **Task Name 4**: Description of what this task accomplishes
+
+### Phase 3: Integration & Testing
+- **Task Name 5**: Description of what this task accomplishes
+- **Task Name 6**: Description of what this task accomplishes
+
+### Phase 4: Polish & Deployment
+- **Task Name 7**: Description of what this task accomplishes
+
+## Guidelines:
+1. Create 3-5 phases depending on project complexity
+2. Each phase should have 2-5 focused tasks
+3. Tasks should be atomic and achievable by an AI agent in one session
+4. Order tasks logically - dependencies should come before dependent tasks
+5. Task names should be concise but descriptive
+6. Task descriptions should clearly explain the expected outcome
+7. Consider: setup, core features, data handling, error handling, testing, documentation
+
+Generate a realistic and actionable plan that an AI coding assistant can execute.`
+
+  // Call the SDK to generate the plan
+  const response = await client.session.prompt({
+    path: { id: sessionId },
+    body: {
+      model: { providerID: "anthropic", modelID: "claude-sonnet-4-20250514" },
+      parts: [{ type: "text" as const, text: planningPrompt }]
+    }
+  })
+  
+  const responseText = extractResponseText(response)
+  
+  if (!responseText || responseText.length < 100) {
+    throw new Error("AI returned an insufficient plan response")
+  }
+  
+  // Parse the response into a structured plan
+  const plan = parsePlanFromResponse(responseText, projectIdea)
+  
+  // Validate the plan has enough content
+  if (plan.tasks.length < 2) {
+    throw new Error("AI generated insufficient tasks. Please try a more detailed project description.")
+  }
+  
+  return plan
+}
+
+/**
+ * Generate a fallback plan when SDK is not available
+ * This creates a reasonable plan structure based on heuristics
+ */
+export function generateFallbackPlan(projectIdea: string): ExecutionPlan {
+  const words = projectIdea.toLowerCase().split(/\s+/)
+  const projectName = projectIdea.split(/\s+/).slice(0, 4).join(" ") + " Project"
+  
+  // Detect project type from keywords
+  const isWeb = words.some(w => ["web", "website", "app", "application", "frontend", "react", "vue", "angular"].includes(w))
+  const isApi = words.some(w => ["api", "backend", "server", "rest", "graphql", "endpoint"].includes(w))
+  const isData = words.some(w => ["data", "database", "analytics", "dashboard", "visualization"].includes(w))
+  const isMobile = words.some(w => ["mobile", "ios", "android", "react-native", "flutter"].includes(w))
+  const isCli = words.some(w => ["cli", "command", "terminal", "tool", "script", "automation"].includes(w))
+  
+  const tasks: ExecutionTask[] = []
+  const phases: ExecutionPlan["phases"] = []
+  let taskId = 0
+  
+  // Phase 1: Foundation
+  const foundationTasks: ExecutionTask[] = [
+    {
+      id: `task-${++taskId}`,
+      name: "Project Setup",
+      description: `Initialize project structure with appropriate build tools, dependencies, and configuration for: ${projectIdea}`,
+      model: "claude-3-5-haiku-20241022",
+      complexity: "simple",
+      estimateMinutes: 10
+    },
+    {
+      id: `task-${++taskId}`,
+      name: "Core Architecture",
+      description: `Design and implement the core architecture patterns, folder structure, and foundational types/interfaces for the project`,
+      model: "claude-sonnet-4-20250514",
+      complexity: "medium",
+      estimateMinutes: 20
+    }
+  ]
+  
+  phases.push({ id: "phase-1", name: "Foundation", tasks: foundationTasks })
+  tasks.push(...foundationTasks)
+  
+  // Phase 2: Core Features (contextual)
+  const coreTasks: ExecutionTask[] = []
+  
+  if (isWeb || isMobile) {
+    coreTasks.push({
+      id: `task-${++taskId}`,
+      name: "UI Components",
+      description: "Build reusable UI components with proper styling, accessibility, and responsive design",
+      model: "claude-sonnet-4-20250514",
+      complexity: "medium",
+      estimateMinutes: 25
+    })
+    coreTasks.push({
+      id: `task-${++taskId}`,
+      name: "State Management",
+      description: "Implement state management solution with actions, reducers, and side effect handling",
+      model: "claude-sonnet-4-20250514",
+      complexity: "medium",
+      estimateMinutes: 20
+    })
+  }
+  
+  if (isApi) {
+    coreTasks.push({
+      id: `task-${++taskId}`,
+      name: "API Endpoints",
+      description: "Create RESTful API endpoints with proper routing, validation, and error handling",
+      model: "claude-sonnet-4-20250514",
+      complexity: "medium",
+      estimateMinutes: 25
+    })
+    coreTasks.push({
+      id: `task-${++taskId}`,
+      name: "Authentication",
+      description: "Implement secure authentication system with JWT, session management, and authorization",
+      model: "claude-sonnet-4-20250514",
+      complexity: "complex",
+      estimateMinutes: 30
+    })
+  }
+  
+  if (isData) {
+    coreTasks.push({
+      id: `task-${++taskId}`,
+      name: "Data Models",
+      description: "Define database schema, models, and data access layer with proper relationships",
+      model: "claude-sonnet-4-20250514",
+      complexity: "medium",
+      estimateMinutes: 20
+    })
+    coreTasks.push({
+      id: `task-${++taskId}`,
+      name: "Data Processing",
+      description: "Implement data processing pipelines, transformations, and aggregations",
+      model: "claude-sonnet-4-20250514",
+      complexity: "complex",
+      estimateMinutes: 30
+    })
+  }
+  
+  if (isCli) {
+    coreTasks.push({
+      id: `task-${++taskId}`,
+      name: "CLI Interface",
+      description: "Build command-line interface with argument parsing, help text, and subcommands",
+      model: "claude-sonnet-4-20250514",
+      complexity: "medium",
+      estimateMinutes: 20
+    })
+    coreTasks.push({
+      id: `task-${++taskId}`,
+      name: "Core Logic",
+      description: "Implement the main business logic and core functionality of the tool",
+      model: "claude-sonnet-4-20250514",
+      complexity: "complex",
+      estimateMinutes: 30
+    })
+  }
+  
+  // Default core tasks if no specific type detected
+  if (coreTasks.length === 0) {
+    coreTasks.push({
+      id: `task-${++taskId}`,
+      name: "Main Feature Implementation",
+      description: `Implement the primary functionality described in: ${projectIdea}`,
+      model: "claude-sonnet-4-20250514",
+      complexity: "complex",
+      estimateMinutes: 30
+    })
+    coreTasks.push({
+      id: `task-${++taskId}`,
+      name: "Data Layer",
+      description: "Set up data models, storage, and data access patterns",
+      model: "claude-sonnet-4-20250514",
+      complexity: "medium",
+      estimateMinutes: 20
+    })
+  }
+  
+  phases.push({ id: "phase-2", name: "Core Features", tasks: coreTasks })
+  tasks.push(...coreTasks)
+  
+  // Phase 3: Polish & Testing
+  const polishTasks: ExecutionTask[] = [
+    {
+      id: `task-${++taskId}`,
+      name: "Error Handling",
+      description: "Add comprehensive error handling, input validation, and user-friendly error messages",
+      model: "claude-3-5-haiku-20241022",
+      complexity: "simple",
+      estimateMinutes: 15
+    },
+    {
+      id: `task-${++taskId}`,
+      name: "Testing Suite",
+      description: "Write unit tests and integration tests for critical functionality",
+      model: "claude-sonnet-4-20250514",
+      complexity: "medium",
+      estimateMinutes: 25
+    },
+    {
+      id: `task-${++taskId}`,
+      name: "Documentation",
+      description: "Create README, API documentation, and inline code documentation",
+      model: "claude-3-5-haiku-20241022",
+      complexity: "simple",
+      estimateMinutes: 10
+    }
+  ]
+  
+  phases.push({ id: "phase-3", name: "Polish & Testing", tasks: polishTasks })
+  tasks.push(...polishTasks)
+  
+  // Calculate totals
+  const totalEstimateMinutes = tasks.reduce((sum, t) => sum + t.estimateMinutes, 0)
+  const estimatedCost = tasks.reduce((sum, t) => {
+    const costPerMinute = t.model.includes("opus") ? 0.02 
+      : t.model.includes("sonnet") ? 0.01 
+      : 0.005
+    return sum + (t.estimateMinutes * costPerMinute)
+  }, 0)
+  
+  return {
+    projectName,
+    description: projectIdea,
+    tasks,
+    phases,
+    totalEstimateMinutes,
+    estimatedCost
   }
 }
