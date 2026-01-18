@@ -141,6 +141,38 @@ const MODEL_TIERS: Record<string, "premium" | "standard" | "fast"> = {
   "copilot-chat": "standard",
   // OpenCode Zen models
   "zen": "standard",
+  // Google/Gemini models
+  "gemini-2.5-pro": "premium",
+  "gemini-2-pro": "premium",
+  "gemini-pro": "standard",
+  "gemini-2.5-flash": "fast",
+  "gemini-2-flash": "fast",
+  "gemini-flash": "fast",
+  "gemini-3-flash-preview": "fast",
+  // Anthropic models
+  "claude-opus-4": "premium",
+  "claude-sonnet-4": "standard",
+  "claude-haiku-3": "fast",
+}
+
+/**
+ * Infer model tier from model name when not in MODEL_TIERS
+ */
+function inferModelTier(modelId: string): "premium" | "standard" | "fast" {
+  const id = modelId.toLowerCase()
+  
+  // Premium tier indicators
+  if (id.includes("opus") || id.includes("pro") || id.includes("o3") || id.includes("o1") || id.includes("large")) {
+    return "premium"
+  }
+  
+  // Fast tier indicators
+  if (id.includes("mini") || id.includes("flash") || id.includes("haiku") || id.includes("small") || id.includes("fast") || id.includes("nano")) {
+    return "fast"
+  }
+  
+  // Default to standard
+  return "standard"
 }
 
 // Model display names
@@ -177,32 +209,53 @@ let cachedAvailableModels: AvailableModel[] | null = null
  * Used for internal operations like prompt engineering and planning
  * Returns model config from cached available models
  */
-async function getBestAvailableModelConfig(complexity: "fast" | "standard" | "premium" = "standard"): { providerID: string; modelID: string } {
+async function getBestAvailableModelConfig(complexity: "fast" | "standard" | "premium" = "standard"): Promise<{ providerID: string; modelID: string }> {
   if (!cachedAvailableModels) {
     await fetchAvailableModels();
-  }  }
+  }
   
   const available = cachedAvailableModels.filter(m => m.available)
   if (available.length === 0) {
     throw new Error("[getBestAvailableModelConfig] No available models configured.")
   }
   
-  // Find best model for the requested tier
-  const tierModels = available.filter(m => m.tier === complexity)
+  // Prefer well-known reliable models first (avoid experimental/preview models)
+  const preferredModels = ["gpt-4o", "gpt-4.1", "claude-sonnet-4", "copilot-chat", "gpt-4o-mini", "gpt-4.1-mini"]
+  for (const preferredId of preferredModels) {
+    const match = available.find(m => m.id === preferredId || m.id.includes(preferredId))
+    if (match) {
+      console.log("[getBestAvailableModelConfig] Selected preferred model:", match.id, "from provider:", match.providerId)
+      return { providerID: match.providerId, modelID: match.id }
+    }
+  }
+  
+  // Find best model for the requested tier, avoiding preview/experimental models
+  const safeModels = available.filter(m => !m.id.includes("preview") && !m.id.includes("experimental"))
+  const tierModels = safeModels.filter(m => m.tier === complexity)
   if (tierModels.length > 0) {
     const model = tierModels[0]!
+    console.log("[getBestAvailableModelConfig] Selected tier model:", model.id, "from provider:", model.providerId)
     return { providerID: model.providerId, modelID: model.id }
   }
   
   // Fall back to any available model, preferring standard tier
-  const standardModels = available.filter(m => m.tier === "standard")
+  const standardModels = safeModels.filter(m => m.tier === "standard")
   if (standardModels.length > 0) {
     const model = standardModels[0]!
+    console.log("[getBestAvailableModelConfig] Selected standard model:", model.id, "from provider:", model.providerId)
     return { providerID: model.providerId, modelID: model.id }
   }
   
-  // Use first available model
+  // Use first available non-preview model
+  if (safeModels.length > 0) {
+    const model = safeModels[0]!
+    console.log("[getBestAvailableModelConfig] Selected safe fallback model:", model.id, "from provider:", model.providerId)
+    return { providerID: model.providerId, modelID: model.id }
+  }
+  
+  // Last resort: use any available model
   const model = available[0]!
+  console.log("[getBestAvailableModelConfig] Selected last-resort model:", model.id, "from provider:", model.providerId)
   return { providerID: model.providerId, modelID: model.id }
 }
 
@@ -244,7 +297,7 @@ export async function fetchAvailableModels(baseUrl?: string): Promise<AvailableM
         name: MODEL_DISPLAY_NAMES[modelId] || info.name || modelId,
         providerId: provider.id,
         providerName: PROVIDER_NAMES[provider.id] || provider.name,
-        tier: MODEL_TIERS[modelId] || "standard",
+        tier: MODEL_TIERS[modelId] || inferModelTier(modelId),
         available: isConnected && !info.experimental,
         cost: info.cost ? {
           input: info.cost.input,
@@ -262,11 +315,16 @@ export async function fetchAvailableModels(baseUrl?: string): Promise<AvailableM
   }
 
   // Sort by availability and tier
-  return models.sort((a, b) => {
+  const sorted = models.sort((a, b) => {
     if (a.available !== b.available) return a.available ? -1 : 1
     const tierOrder = { premium: 0, standard: 1, fast: 2 }
     return tierOrder[a.tier] - tierOrder[b.tier]
   })
+  
+  // Update the cache
+  cachedAvailableModels = sorted
+  
+  return sorted
 }
 
 /**
@@ -433,7 +491,7 @@ Provide ONLY the engineered prompt text that should be sent to the target model.
 The prompt should be comprehensive yet focused, guiding the AI to produce excellent, production-ready code.`
 
     // Use the best available standard-tier model for prompt engineering
-    const modelConfig = getBestAvailableModelConfig("standard")
+    const modelConfig = await getBestAvailableModelConfig("standard")
     
     const response = await client.session.prompt({
       path: { id: sessionId },
@@ -1816,11 +1874,12 @@ Provide the plan in the following format:
 Generate a realistic and actionable plan that an AI coding assistant can execute.`
 
   // Fetch available models from SDK before model selection
-    await fetchAvailableModels();
+  await fetchAvailableModels();
   // Use the best available standard-tier model for plan generation
-  const modelConfig = getBestAvailableModelConfig("standard")
+  const modelConfig = await getBestAvailableModelConfig("standard")
   
   // Call the SDK to generate the plan
+  console.log("[analyzeAndPlanWithSDK] Using model config:", modelConfig)
   const response = await client.session.prompt({
     path: { id: sessionId },
     body: {
@@ -1829,9 +1888,12 @@ Generate a realistic and actionable plan that an AI coding assistant can execute
     }
   })
   
+  console.log("[analyzeAndPlanWithSDK] Raw response:", JSON.stringify(response, null, 2))
   const responseText = extractResponseText(response)
+  console.log("[analyzeAndPlanWithSDK] Extracted text length:", responseText?.length, "content preview:", responseText?.slice(0, 200))
   
   if (!responseText || responseText.length < 100) {
+    console.error("[analyzeAndPlanWithSDK] Insufficient response. Full response:", response)
     throw new Error("AI returned an insufficient plan response")
   }
   

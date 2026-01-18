@@ -7,6 +7,7 @@ import { useState } from "react"
 import { IdeaCapture } from "./stages/IdeaCapture"
 import { AIPlanningStage } from "./stages/AIPlanningStage"
 import { LiveExecutionStage } from "./stages/LiveExecutionStage"
+import { ProjectPreviewStage } from "./stages/ProjectPreviewStage"
 import { useConnectionStatus } from "./hooks/useConnectionStatus"
 
 function ConnectionStatusBadge({ status, isConnected, isConnecting, reconnectAttempts, onReconnect }) {
@@ -87,6 +88,7 @@ export function AutoDevFlow() {
   const [stage, setStage] = useState(1)
   const [idea, setIdea] = useState("")
   const [plan, setPlan] = useState(null)
+  const [executionResult, setExecutionResult] = useState(null)
 
   // Connection status poller - checks every 10 seconds with auto-reconnect
   const connection = useConnectionStatus({
@@ -111,14 +113,23 @@ export function AutoDevFlow() {
       setStage(1)
     } else if (stage === 3) {
       setStage(2)
+    } else if (stage === 4) {
+      setStage(3)
     }
   }
 
-  const handleComplete = () => {
+  const handleComplete = (result) => {
+    // Move to preview stage with execution result
+    setExecutionResult(result || { plan, idea })
+    setStage(4)
+  }
+
+  const handleNewProject = () => {
     // Reset flow for a new project
     setStage(1)
     setIdea("")
     setPlan(null)
+    setExecutionResult(null)
   }
 
   return (
@@ -153,6 +164,13 @@ export function AutoDevFlow() {
                 number={3}
                 label="Execution"
                 active={stage === 3}
+                completed={stage > 3}
+              />
+              <StageConnector active={stage > 3} />
+              <StageIndicator
+                number={4}
+                label="Preview"
+                active={stage === 4}
                 completed={false}
               />
             </div>
@@ -185,6 +203,16 @@ export function AutoDevFlow() {
           <LiveExecutionStage
             plan={plan}
             onComplete={handleComplete}
+            onBack={handleBack}
+          />
+        )}
+
+        {stage === 4 && (
+          <ProjectPreviewStage
+            plan={plan}
+            idea={idea}
+            executionResult={executionResult}
+            onNewProject={handleNewProject}
             onBack={handleBack}
           />
         )}
