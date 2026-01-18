@@ -143,17 +143,7 @@ const MODEL_TIERS: Record<string, "premium" | "standard" | "fast"> = {
 }
 
 // Model display names
-Add real execution setup files and documentation
-
-- Created .env.example with API key templates
-- Created start-real.sh script for easy server startup
-- Updated execution.ts to use correct port (4096)
-- Added setup documentation for real code execution
-
-To enable real execution:
-1. Copy .env.example to .env and add API keys
-2. Run ./start-real.sh to start OpenCode server
-3. Frontend will connect and execute real AI agentsconst MODEL_DISPLAY_NAMES: Record<string, string> = {
+const MODEL_DISPLAY_NAMES: Record<string, string> = {
   "claude-opus-4-20250514": "Claude Opus 4",
   "claude-sonnet-4-20250514": "Claude Sonnet 4",
   "claude-3-5-haiku-20241022": "Claude Haiku",
