@@ -177,13 +177,10 @@ let cachedAvailableModels: AvailableModel[] | null = null
  * Used for internal operations like prompt engineering and planning
  * Returns model config from cached available models
  */
-function getBestAvailableModelConfig(complexity: "fast" | "standard" | "premium" = "standard"): { providerID: string; modelID: string } {
-  if (!cachedAvailableModels || cachedAvailableModels.length === 0) {
-    throw new Error(
-      "[getBestAvailableModelConfig] No cached models available. " +
-      "Please call fetchAvailableModels() first to populate the model cache."
-    )
-  }
+async function getBestAvailableModelConfig(complexity: "fast" | "standard" | "premium" = "standard"): { providerID: string; modelID: string } {
+  if (!cachedAvailableModels) {
+    await fetchAvailableModels();
+  }  }
   
   const available = cachedAvailableModels.filter(m => m.available)
   if (available.length === 0) {
