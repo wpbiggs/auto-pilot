@@ -248,23 +248,9 @@ function getModelConfig(modelName: string): { providerID: string; modelID: strin
 }
 
 /**
- * Build the prompt for a task - Enhanced with explicit production-ready requirements
+ * Critical requirements appended to all prompts for production-ready code
  */
-function buildTaskPrompt(task: ExecutionTask, projectDescription: string): string {
-  // Use custom prompt if provided (but still append critical instructions)
-  const basePrompt = task.customPrompt || `## Task: ${task.name}
-
-### Description
-${task.description}`
-
-  // Generate comprehensive prompt with strict production-ready requirements
-  return `You are an expert senior software developer with extensive production experience. Complete the following task with FULL, PRODUCTION-READY implementation.
-
-## Project Context
-${projectDescription}
-
-${basePrompt}
-
+const CRITICAL_REQUIREMENTS = `
 ## CRITICAL REQUIREMENTS - READ CAREFULLY
 
 ### ⚠️ ABSOLUTE REQUIREMENTS (MUST FOLLOW):
@@ -312,6 +298,145 @@ Provide the complete, working implementation with:
 - Ready to copy-paste and run immediately
 
 Remember: If you cannot fully implement something, explain why and provide the closest complete alternative. NEVER leave placeholder code.`
+
+/**
+ * Engineer an optimal prompt using Big Pickle model
+ * Big Pickle specializes in creating task-specific, optimized prompts
+ */
+async function engineerPromptWithBigPickle(params: {
+  originalIdea: string
+  taskName: string
+  taskDescription: string
+  taskComplexity: string
+  targetModel: string
+  baseUrl?: string
+}): Promise<string> {
+  try {
+    const client = getClient(params.baseUrl)
+    
+    // Create a session for Big Pickle prompt engineering
+    const sessionResult = await client.session.create({
+      body: {
+        title: `Prompt Engineering: ${params.taskName.substring(0, 40)}`
+      }
+    })
+
+    if (!sessionResult.data?.id) {
+      console.warn("[BigPickle] Failed to create session, falling back to default prompt")
+      return buildFallbackPrompt(params.taskName, params.taskDescription, params.originalIdea)
+    }
+
+    const sessionId = sessionResult.data.id
+
+    // Use Big Pickle (or a capable model) to engineer the prompt
+    const engineeringPrompt = `You are a prompt engineering expert specializing in creating optimal prompts for AI coding assistants.
+
+Your task is to create a highly effective, detailed prompt that will guide an AI model to produce complete, production-ready code.
+
+## Context
+
+**Original Project Idea:**
+${params.originalIdea}
+
+**Specific Task to Complete:**
+Task Name: ${params.taskName}
+Task Description: ${params.taskDescription}
+
+**Task Complexity:** ${params.taskComplexity}
+**Target AI Model:** ${params.targetModel}
+
+## Your Mission
+
+Engineer an optimal prompt that:
+1. Clearly defines the task scope and requirements
+2. Provides specific technical guidance based on the complexity level
+3. Includes relevant context from the original project idea
+4. Is tailored to the target model's strengths
+5. Emphasizes complete, working implementations (no stubs/TODOs)
+6. Specifies expected output format and quality standards
+7. Includes edge cases and error handling requirements
+
+## Output Format
+
+Provide ONLY the engineered prompt text that should be sent to the target model. Do not include any meta-commentary or explanations - just the optimized prompt itself.
+
+The prompt should be comprehensive yet focused, guiding the AI to produce excellent, production-ready code.`
+
+    const response = await client.session.prompt({
+      path: { id: sessionId },
+      body: {
+        model: { providerID: "anthropic", modelID: "claude-sonnet-4-20250514" },
+        parts: [{ type: "text" as const, text: engineeringPrompt }]
+      }
+    })
+
+    const engineeredPrompt = extractResponseText(response)
+    
+    if (!engineeredPrompt || engineeredPrompt.trim().length < 100) {
+      console.warn("[BigPickle] Received insufficient prompt, falling back to default")
+      return buildFallbackPrompt(params.taskName, params.taskDescription, params.originalIdea)
+    }
+
+    console.log(`[BigPickle] Successfully engineered prompt for: ${params.taskName}`)
+    return engineeredPrompt
+
+  } catch (error) {
+    console.error("[BigPickle] Prompt engineering failed:", error)
+    return buildFallbackPrompt(params.taskName, params.taskDescription, params.originalIdea)
+  }
+}
+
+/**
+ * Fallback prompt builder when Big Pickle is unavailable
+ */
+function buildFallbackPrompt(taskName: string, taskDescription: string, projectContext: string): string {
+  return `You are an expert senior software developer with extensive production experience. Complete the following task with FULL, PRODUCTION-READY implementation.
+
+## Project Context
+${projectContext}
+
+## Task: ${taskName}
+
+### Description
+${taskDescription}`
+}
+
+/**
+ * Build the prompt for a task - Uses Big Pickle for optimal prompt engineering
+ */
+async function buildTaskPrompt(
+  task: ExecutionTask, 
+  projectDescription: string,
+  options?: { baseUrl?: string; useBigPickle?: boolean }
+): Promise<string> {
+  const useBigPickle = options?.useBigPickle ?? true
+
+  // If custom prompt is provided, use it directly with critical requirements
+  if (task.customPrompt) {
+    return `${task.customPrompt}\n\n${CRITICAL_REQUIREMENTS}`
+  }
+
+  // Use Big Pickle to engineer an optimal prompt
+  if (useBigPickle) {
+    try {
+      const engineeredPrompt = await engineerPromptWithBigPickle({
+        originalIdea: projectDescription,
+        taskName: task.name,
+        taskDescription: task.description,
+        taskComplexity: task.complexity,
+        targetModel: task.model,
+        baseUrl: options?.baseUrl,
+      })
+
+      return `${engineeredPrompt}\n\n${CRITICAL_REQUIREMENTS}`
+    } catch (error) {
+      console.warn("[BuildTaskPrompt] Big Pickle failed, using fallback:", error)
+    }
+  }
+
+  // Fallback to standard prompt
+  const fallbackPrompt = buildFallbackPrompt(task.name, task.description, projectDescription)
+  return `${fallbackPrompt}\n\n${CRITICAL_REQUIREMENTS}`
 }
 
 /**
@@ -569,8 +694,8 @@ export function createExecutionService(
       // Get model configuration
       const modelConfig = getModelConfig(task.model)
 
-      // Build the prompt
-      const prompt = buildTaskPrompt(task, plan.description)
+      // Build the prompt using Big Pickle prompt engineering
+      const prompt = await buildTaskPrompt(task, plan.description, { baseUrl: config.baseUrl })
 
       // Execute via SDK session.prompt
       emitLog("info", `Executing with ${modelConfig.modelID}...`)
@@ -664,7 +789,7 @@ export function createExecutionService(
             maxEscalations: config.escalation.maxEscalations,
             error: errorMessage,
             failedOutput: config.escalation.includeFailedOutputInEscalation ? failedOutput : undefined,
-            prompt: buildTaskPrompt(task, plan.description),
+            prompt: await buildTaskPrompt(task, plan.description, { baseUrl: config.baseUrl }),
             timestamp: Date.now(),
           }
           
