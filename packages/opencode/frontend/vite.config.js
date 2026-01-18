@@ -5,6 +5,9 @@ import { fileURLToPath } from "url"
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
+// SDK server URL - use 127.0.0.1 for more reliable connection in Codespaces
+const SDK_SERVER_URL = "http://127.0.0.1:4096"
+
 export default defineConfig({
   plugins: [react()],
   resolve: {
@@ -18,55 +21,55 @@ export default defineConfig({
     host: true,
     proxy: {
       "/app": {
-        target: "http://localhost:4096",
+        target: SDK_SERVER_URL,
         changeOrigin: true,
       },
       "/agent": {
-        target: "http://localhost:4096",
+        target: SDK_SERVER_URL,
         changeOrigin: true,
       },
       "/file": {
-        target: "http://localhost:4096",
+        target: SDK_SERVER_URL,
         changeOrigin: true,
       },
       "/session": {
-        target: "http://localhost:4096",
+        target: SDK_SERVER_URL,
         changeOrigin: true,
       },
       "/provider": {
-        target: "http://localhost:4096",
+        target: SDK_SERVER_URL,
         changeOrigin: true,
       },
       "/project": {
-        target: "http://localhost:4096",
+        target: SDK_SERVER_URL,
         changeOrigin: true,
       },
       "/experimental": {
-        target: "http://localhost:4096",
+        target: SDK_SERVER_URL,
         changeOrigin: true,
       },
       "/path": {
-        target: "http://localhost:4096",
+        target: SDK_SERVER_URL,
         changeOrigin: true,
       },
       "/mcp": {
-        target: "http://localhost:4096",
+        target: SDK_SERVER_URL,
         changeOrigin: true,
       },
       "/lsp": {
-        target: "http://localhost:4096",
+        target: SDK_SERVER_URL,
         changeOrigin: true,
       },
       "/formatter": {
-        target: "http://localhost:4096",
+        target: SDK_SERVER_URL,
         changeOrigin: true,
       },
       "/config": {
-        target: "http://localhost:4096",
+        target: SDK_SERVER_URL,
         changeOrigin: true,
       },
       "/vcs": {
-        target: "http://localhost:4096",
+        target: SDK_SERVER_URL,
         changeOrigin: true,
       },
     },
