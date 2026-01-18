@@ -7,6 +7,46 @@ import { useState } from "react"
 import { IdeaCapture } from "./stages/IdeaCapture"
 import { AIPlanningStage } from "./stages/AIPlanningStage"
 import { LiveExecutionStage } from "./stages/LiveExecutionStage"
+import { useConnectionStatus } from "./hooks/useConnectionStatus"
+
+function ConnectionStatusBadge({ status, isConnected, isConnecting, reconnectAttempts, onReconnect }) {
+  const getStatusColor = () => {
+    if (isConnected) return "bg-green-500/20 border-green-500/50 text-green-400"
+    if (isConnecting) return "bg-yellow-500/20 border-yellow-500/50 text-yellow-400"
+    return "bg-red-500/20 border-red-500/50 text-red-400"
+  }
+
+  const getStatusIcon = () => {
+    if (isConnected) return "🟢"
+    if (isConnecting) return "🟡"
+    return "🔴"
+  }
+
+  const getStatusText = () => {
+    switch (status) {
+      case "connected": return "SDK Connected"
+      case "connecting": return "Connecting..."
+      case "reconnecting": return `Reconnecting (${reconnectAttempts})...`
+      case "disconnected": return "SDK Disconnected"
+      default: return "Unknown"
+    }
+  }
+
+  return (
+    <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs font-medium ${getStatusColor()}`}>
+      <span>{getStatusIcon()}</span>
+      <span>{getStatusText()}</span>
+      {!isConnected && !isConnecting && (
+        <button
+          onClick={onReconnect}
+          className="ml-1 px-2 py-0.5 rounded bg-white/10 hover:bg-white/20 transition-colors"
+        >
+          Retry
+        </button>
+      )}
+    </div>
+  )
+}
 
 function StageIndicator({ number, label, active, completed }) {
   return (
@@ -47,6 +87,14 @@ export function AutoDevFlow() {
   const [stage, setStage] = useState(1)
   const [idea, setIdea] = useState("")
   const [plan, setPlan] = useState(null)
+
+  // Connection status poller - checks every 10 seconds with auto-reconnect
+  const connection = useConnectionStatus({
+    pollInterval: 10000,
+    baseUrl: "http://127.0.0.1:4096",
+    autoReconnect: true,
+    autoStart: true,
+  })
 
   const handleIdeaSubmit = (ideaText) => {
     setIdea(ideaText)
@@ -109,8 +157,14 @@ export function AutoDevFlow() {
               />
             </div>
 
-            {/* Spacer */}
-            <div className="w-32" />
+            {/* SDK Connection Status Badge */}
+            <ConnectionStatusBadge
+              status={connection.status}
+              isConnected={connection.isConnected}
+              isConnecting={connection.isConnecting}
+              reconnectAttempts={connection.reconnectAttempts}
+              onReconnect={connection.reconnect}
+            />
           </div>
         </div>
       </div>
