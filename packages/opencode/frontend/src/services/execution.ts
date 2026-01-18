@@ -158,15 +158,18 @@ const PROVIDER_NAMES: Record<string, string> = {
   google: "Google",
 }
 
+// Cached available models from SDK - populated on first fetch
+let cachedAvailableModels: AvailableModel[] | null = null
+
 /**
  * Get the OpenCode SDK client instance
- * In development, uses empty baseUrl to leverage Vite's proxy configuration
- * In production or when explicitly configured, uses the provided URL
+ * Uses Vite proxy in development (empty baseUrl routes through proxy to localhost:4096)
+ * Falls back to explicit localhost:4096 if VITE_OPENCODE_URL is not set
  */
 function getClient(baseUrl?: string) {
-  // Use empty string to leverage Vite proxy in development
-  // The proxy routes /session, /provider, etc. to localhost:4096
+  // Priority: explicit baseUrl > env var > empty string for Vite proxy
   const url = baseUrl || import.meta.env.VITE_OPENCODE_URL || "";
+  console.log(`[SDK] Creating client with baseUrl: "${url || '(using Vite proxy)'}"`);
   return createOpencodeClient({ baseUrl: url })
 }
 
@@ -405,18 +408,173 @@ ${taskDescription}`
 }
 
 /**
- * Build the prompt for a task - Uses Big Pickle for optimal prompt engineering
+ * Phase-specific prompt strategies for different execution phases
+ * Each phase has unique requirements and focus areas
+ */
+interface PhaseContext {
+  phaseId: string
+  phaseName: string
+  phaseIndex: number
+  totalPhases: number
+  previousPhaseOutputs?: string[]
+}
+
+/**
+ * Get phase-specific prompt enhancements based on the phase type
+ */
+function getPhaseSpecificGuidance(task: ExecutionTask, phaseContext?: PhaseContext): string {
+  if (!phaseContext) {
+    return ""
+  }
+
+  const phaseName = phaseContext.phaseName.toLowerCase()
+  
+  // Foundation/Setup phase
+  if (phaseName.includes("foundation") || phaseName.includes("setup") || phaseName.includes("init")) {
+    return `
+## Phase-Specific Requirements: FOUNDATION PHASE
+
+This is a FOUNDATION task that sets up the project infrastructure.
+
+### Special Focus Areas:
+1. **Project Structure** - Create a clean, scalable folder structure
+2. **Dependencies** - Select appropriate, well-maintained packages
+3. **Configuration** - Set up build tools, linting, and formatting
+4. **Type Definitions** - Establish core types/interfaces that other phases will use
+5. **Best Practices** - Follow industry standards for the chosen framework/language
+
+### Output Expectations:
+- Complete package.json or equivalent with all needed dependencies
+- Configuration files (tsconfig, eslint, prettier, etc.)
+- Basic folder structure with placeholder directories
+- Core type definitions and interfaces
+- README with setup instructions
+
+### Critical for Downstream Tasks:
+Subsequent phases depend on the structure you create. Ensure:
+- Clear separation of concerns
+- Consistent naming conventions
+- Proper exports and module boundaries`
+  }
+  
+  // Core Implementation phase
+  if (phaseName.includes("core") || phaseName.includes("implementation") || phaseName.includes("feature")) {
+    return `
+## Phase-Specific Requirements: CORE IMPLEMENTATION PHASE
+
+This is a CORE IMPLEMENTATION task building the main functionality.
+
+### Special Focus Areas:
+1. **Business Logic** - Implement complete, working business rules
+2. **Data Flow** - Clear data transformation and state management
+3. **Integration Points** - Well-defined interfaces for components to interact
+4. **Error Boundaries** - Graceful error handling at component boundaries
+5. **Performance** - Consider efficiency from the start
+
+### Output Expectations:
+- Fully functional feature implementation
+- All helper functions fully implemented (NO stubs)
+- Proper TypeScript types throughout
+- Unit-testable code structure
+- Clear separation between UI and logic
+
+### Building on Foundation:
+This phase uses the types and structure from the Foundation phase.
+Ensure your implementation:
+- Uses the established type definitions
+- Follows the folder structure conventions
+- Integrates with existing patterns`
+  }
+  
+  // Integration phase
+  if (phaseName.includes("integration") || phaseName.includes("connect")) {
+    return `
+## Phase-Specific Requirements: INTEGRATION PHASE
+
+This is an INTEGRATION task connecting components together.
+
+### Special Focus Areas:
+1. **API Contracts** - Clear interfaces between components
+2. **Data Transformation** - Convert data formats as needed
+3. **Error Propagation** - Handle errors across boundaries
+4. **State Synchronization** - Keep data consistent across components
+5. **Testing Integration Points** - Verify connections work correctly
+
+### Output Expectations:
+- Working connections between all components
+- Clear data flow documentation
+- Error handling for all failure modes
+- Integration tests where appropriate`
+  }
+  
+  // Testing phase
+  if (phaseName.includes("test") || phaseName.includes("quality")) {
+    return `
+## Phase-Specific Requirements: TESTING & QUALITY PHASE
+
+This is a TESTING task ensuring code quality and correctness.
+
+### Special Focus Areas:
+1. **Test Coverage** - Cover critical paths and edge cases
+2. **Unit Tests** - Test individual functions and components
+3. **Integration Tests** - Test component interactions
+4. **Error Cases** - Test failure scenarios
+5. **Edge Cases** - Test boundary conditions
+
+### Output Expectations:
+- Complete test files with passing tests
+- Test utilities and mocks as needed
+- Clear test descriptions
+- Coverage for happy path and error cases
+- Setup and teardown properly handled`
+  }
+  
+  // Polish/Documentation phase
+  if (phaseName.includes("polish") || phaseName.includes("document") || phaseName.includes("finish")) {
+    return `
+## Phase-Specific Requirements: POLISH & DOCUMENTATION PHASE
+
+This is a POLISH task finalizing the project.
+
+### Special Focus Areas:
+1. **Documentation** - Clear README and API docs
+2. **Code Comments** - Document complex logic
+3. **Error Messages** - User-friendly error text
+4. **Edge Cases** - Handle remaining edge cases
+5. **Cleanup** - Remove dead code and console logs
+
+### Output Expectations:
+- Comprehensive README with usage examples
+- API documentation for public interfaces
+- JSDoc/TSDoc comments on exported functions
+- Consistent code formatting
+- No TODO comments or placeholders remaining`
+  }
+
+  return ""
+}
+
+/**
+ * Build the prompt for a task - Uses phase-aware prompt engineering
+ * Creates tailored prompts based on task phase and context
  */
 async function buildTaskPrompt(
   task: ExecutionTask, 
   projectDescription: string,
-  options?: { baseUrl?: string; useBigPickle?: boolean }
+  options?: { 
+    baseUrl?: string
+    useBigPickle?: boolean
+    phaseContext?: PhaseContext
+  }
 ): Promise<string> {
   const useBigPickle = options?.useBigPickle ?? true
+  
+  // Get phase-specific guidance
+  const phaseGuidance = getPhaseSpecificGuidance(task, options?.phaseContext)
 
   // If custom prompt is provided, use it directly with critical requirements
   if (task.customPrompt) {
-    return `${task.customPrompt}\n\n${CRITICAL_REQUIREMENTS}`
+    return `${task.customPrompt}${phaseGuidance}\n\n${CRITICAL_REQUIREMENTS}`
   }
 
   // Use Big Pickle to engineer an optimal prompt
@@ -431,15 +589,15 @@ async function buildTaskPrompt(
         baseUrl: options?.baseUrl,
       })
 
-      return `${engineeredPrompt}\n\n${CRITICAL_REQUIREMENTS}`
+      return `${engineeredPrompt}${phaseGuidance}\n\n${CRITICAL_REQUIREMENTS}`
     } catch (error) {
       console.warn("[BuildTaskPrompt] Big Pickle failed, using fallback:", error)
     }
   }
 
-  // Fallback to standard prompt
+  // Fallback to standard prompt with phase guidance
   const fallbackPrompt = buildFallbackPrompt(task.name, task.description, projectDescription)
-  return `${fallbackPrompt}\n\n${CRITICAL_REQUIREMENTS}`
+  return `${fallbackPrompt}${phaseGuidance}\n\n${CRITICAL_REQUIREMENTS}`
 }
 
 /**
@@ -663,14 +821,33 @@ export function createExecutionService(
     onUpdate(getStatus(), { type: "log", logType: type, message })
   }
 
+  // Find phase context for a task
+  const getPhaseContextForTask = (task: ExecutionTask): PhaseContext | undefined => {
+    for (let i = 0; i < plan.phases.length; i++) {
+      const phase = plan.phases[i]
+      if (phase && phase.tasks.some(t => t.id === task.id)) {
+        return {
+          phaseId: phase.id,
+          phaseName: phase.name,
+          phaseIndex: i,
+          totalPhases: plan.phases.length,
+        }
+      }
+    }
+    return undefined
+  }
+
   const executeTask = async (task: ExecutionTask): Promise<void> => {
     const startTime = Date.now()
+    
+    // Get phase context for tailored prompts
+    const phaseContext = getPhaseContextForTask(task)
     
     try {
       // Update status to running
       taskStates.set(task.id, { status: "running", progress: 0 })
       onUpdate(getStatus(), { type: "task_started", taskId: task.id })
-      emitLog("info", `Starting task: ${task.name}`)
+      emitLog("info", `Starting task: ${task.name}${phaseContext ? ` (Phase: ${phaseContext.phaseName})` : ""}`)
 
       // Initial progress - task initialization
       taskStates.set(task.id, { status: "running", progress: 10 })
@@ -697,8 +874,11 @@ export function createExecutionService(
       // Get model configuration
       const modelConfig = getModelConfig(task.model)
 
-      // Build the prompt using Big Pickle prompt engineering
-      const prompt = await buildTaskPrompt(task, plan.description, { baseUrl: config.baseUrl })
+      // Build the prompt with phase-aware context
+      const prompt = await buildTaskPrompt(task, plan.description, { 
+        baseUrl: config.baseUrl,
+        phaseContext
+      })
 
       // Execute via SDK session.prompt
       emitLog("info", `Executing with ${modelConfig.modelID}...`)
@@ -1201,15 +1381,59 @@ export const createMockExecutionService = createOfflineExecutionService
 
 /**
  * Check if OpenCode SDK is available
+ * Attempts to connect to the SDK server with a timeout
  */
 export async function checkSDKConnection(baseUrl?: string): Promise<boolean> {
   try {
+    console.log("[SDK] Checking SDK connection...")
     const client = getClient(baseUrl)
-    const response = await client.session.list()
-    return response.data !== undefined
-  } catch {
+    
+    // Add timeout to prevent hanging
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error("Connection timeout")), 5000)
+    })
+    
+    const response = await Promise.race([
+      client.session.list(),
+      timeoutPromise
+    ])
+    
+    const isConnected = response.data !== undefined
+    console.log(`[SDK] Connection check result: ${isConnected ? "CONNECTED" : "NOT CONNECTED"}`)
+    return isConnected
+  } catch (error: any) {
+    console.warn("[SDK] Connection check failed:", error.message || error)
     return false
   }
+}
+
+/**
+ * Get cached available models or fetch from SDK
+ */
+export async function getAvailableModelsFromSDK(baseUrl?: string): Promise<AvailableModel[]> {
+  if (cachedAvailableModels) {
+    return cachedAvailableModels
+  }
+  
+  try {
+    const models = await fetchAvailableModels(baseUrl)
+    const availableOnly = models.filter(m => m.available)
+    if (availableOnly.length > 0) {
+      cachedAvailableModels = models
+      console.log(`[SDK] Cached ${availableOnly.length} available models:`, availableOnly.map(m => m.id))
+    }
+    return models
+  } catch (error) {
+    console.warn("[SDK] Failed to fetch models, using defaults")
+    return getDefaultModels()
+  }
+}
+
+/**
+ * Clear the model cache (useful when reconnecting)
+ */
+export function clearModelCache() {
+  cachedAvailableModels = null
 }
 
 /**
@@ -1272,18 +1496,54 @@ function scoreComplexity(description: string): { complexity: string; estimateMin
 }
 
 /**
- * Assign optimal model based on task complexity
+ * Assign optimal model based on task complexity and available models
+ * Dynamically selects from actually available/configured models
  */
-function assignOptimalModel(complexity: string): string {
+function assignOptimalModel(complexity: string, availableModels?: AvailableModel[]): string {
+  const models = availableModels || cachedAvailableModels || []
+  const available = models.filter(m => m.available)
+  
+  // If no available models, fall back to defaults
+  if (available.length === 0) {
+    switch (complexity) {
+      case "complex": return "claude-sonnet-4-20250514"
+      case "medium": return "claude-sonnet-4-20250514"
+      case "simple": return "claude-3-5-haiku-20241022"
+      default: return "claude-sonnet-4-20250514"
+    }
+  }
+  
+  // Find best model for complexity from available models
+  const premiumModels = available.filter(m => m.tier === "premium")
+  const standardModels = available.filter(m => m.tier === "standard")
+  const fastModels = available.filter(m => m.tier === "fast")
+  
   switch (complexity) {
     case "complex":
-      return "claude-sonnet-4-20250514"
+      // Prefer standard tier for complex tasks (good balance)
+      // Premium only if no standard available
+      if (standardModels.length > 0) return standardModels[0]!.id
+      if (premiumModels.length > 0) return premiumModels[0]!.id
+      if (fastModels.length > 0) return fastModels[0]!.id
+      return available[0]!.id
     case "medium":
-      return "claude-sonnet-4-20250514"
+      // Prefer standard tier, fall back to premium or fast
+      if (standardModels.length > 0) return standardModels[0]!.id
+      if (premiumModels.length > 0) return premiumModels[0]!.id
+      if (fastModels.length > 0) return fastModels[0]!.id
+      return available[0]!.id
     case "simple":
-      return "claude-3-5-haiku-20241022"
+      // Prefer fast tier for simple tasks (cost-efficient)
+      if (fastModels.length > 0) return fastModels[0]!.id
+      if (standardModels.length > 0) return standardModels[0]!.id
+      if (premiumModels.length > 0) return premiumModels[0]!.id
+      return available[0]!.id
     default:
-      return "claude-sonnet-4-20250514"
+      // Default to best available
+      if (standardModels.length > 0) return standardModels[0]!.id
+      if (fastModels.length > 0) return fastModels[0]!.id
+      if (premiumModels.length > 0) return premiumModels[0]!.id
+      return available[0]!.id
   }
 }
 
@@ -1504,10 +1764,30 @@ Generate a realistic and actionable plan that an AI coding assistant can execute
 /**
  * Generate a fallback plan when SDK is not available
  * This creates a reasonable plan structure based on heuristics
+ * Uses dynamic model selection from cached available models
  */
-export function generateFallbackPlan(projectIdea: string): ExecutionPlan {
+export function generateFallbackPlan(projectIdea: string, availableModels?: AvailableModel[]): ExecutionPlan {
   const words = projectIdea.toLowerCase().split(/\s+/)
   const projectName = projectIdea.split(/\s+/).slice(0, 4).join(" ") + " Project"
+  
+  // Use passed models or cached models
+  const models = availableModels || cachedAvailableModels || undefined
+  
+  // Helper to create a task with dynamic model assignment
+  const createTask = (
+    id: number,
+    name: string, 
+    description: string, 
+    complexity: "simple" | "medium" | "complex",
+    estimateMinutes: number
+  ): ExecutionTask => ({
+    id: `task-${id}`,
+    name,
+    description,
+    model: assignOptimalModel(complexity, models),
+    complexity,
+    estimateMinutes
+  })
   
   // Detect project type from keywords
   const isWeb = words.some(w => ["web", "website", "app", "application", "frontend", "react", "vue", "angular"].includes(w))
@@ -1522,22 +1802,12 @@ export function generateFallbackPlan(projectIdea: string): ExecutionPlan {
   
   // Phase 1: Foundation
   const foundationTasks: ExecutionTask[] = [
-    {
-      id: `task-${++taskId}`,
-      name: "Project Setup",
-      description: `Initialize project structure with appropriate build tools, dependencies, and configuration for: ${projectIdea}`,
-      model: "claude-3-5-haiku-20241022",
-      complexity: "simple",
-      estimateMinutes: 10
-    },
-    {
-      id: `task-${++taskId}`,
-      name: "Core Architecture",
-      description: `Design and implement the core architecture patterns, folder structure, and foundational types/interfaces for the project`,
-      model: "claude-sonnet-4-20250514",
-      complexity: "medium",
-      estimateMinutes: 20
-    }
+    createTask(++taskId, "Project Setup", 
+      `Initialize project structure with appropriate build tools, dependencies, and configuration for: ${projectIdea}`,
+      "simple", 10),
+    createTask(++taskId, "Core Architecture",
+      `Design and implement the core architecture patterns, folder structure, and foundational types/interfaces for the project`,
+      "medium", 20)
   ]
   
   phases.push({ id: "phase-1", name: "Foundation", tasks: foundationTasks })
@@ -1547,99 +1817,49 @@ export function generateFallbackPlan(projectIdea: string): ExecutionPlan {
   const coreTasks: ExecutionTask[] = []
   
   if (isWeb || isMobile) {
-    coreTasks.push({
-      id: `task-${++taskId}`,
-      name: "UI Components",
-      description: "Build reusable UI components with proper styling, accessibility, and responsive design",
-      model: "claude-sonnet-4-20250514",
-      complexity: "medium",
-      estimateMinutes: 25
-    })
-    coreTasks.push({
-      id: `task-${++taskId}`,
-      name: "State Management",
-      description: "Implement state management solution with actions, reducers, and side effect handling",
-      model: "claude-sonnet-4-20250514",
-      complexity: "medium",
-      estimateMinutes: 20
-    })
+    coreTasks.push(createTask(++taskId, "UI Components",
+      "Build reusable UI components with proper styling, accessibility, and responsive design",
+      "medium", 25))
+    coreTasks.push(createTask(++taskId, "State Management",
+      "Implement state management solution with actions, reducers, and side effect handling",
+      "medium", 20))
   }
   
   if (isApi) {
-    coreTasks.push({
-      id: `task-${++taskId}`,
-      name: "API Endpoints",
-      description: "Create RESTful API endpoints with proper routing, validation, and error handling",
-      model: "claude-sonnet-4-20250514",
-      complexity: "medium",
-      estimateMinutes: 25
-    })
-    coreTasks.push({
-      id: `task-${++taskId}`,
-      name: "Authentication",
-      description: "Implement secure authentication system with JWT, session management, and authorization",
-      model: "claude-sonnet-4-20250514",
-      complexity: "complex",
-      estimateMinutes: 30
-    })
+    coreTasks.push(createTask(++taskId, "API Endpoints",
+      "Create RESTful API endpoints with proper routing, validation, and error handling",
+      "medium", 25))
+    coreTasks.push(createTask(++taskId, "Authentication",
+      "Implement secure authentication system with JWT, session management, and authorization",
+      "complex", 30))
   }
   
   if (isData) {
-    coreTasks.push({
-      id: `task-${++taskId}`,
-      name: "Data Models",
-      description: "Define database schema, models, and data access layer with proper relationships",
-      model: "claude-sonnet-4-20250514",
-      complexity: "medium",
-      estimateMinutes: 20
-    })
-    coreTasks.push({
-      id: `task-${++taskId}`,
-      name: "Data Processing",
-      description: "Implement data processing pipelines, transformations, and aggregations",
-      model: "claude-sonnet-4-20250514",
-      complexity: "complex",
-      estimateMinutes: 30
-    })
+    coreTasks.push(createTask(++taskId, "Data Models",
+      "Define database schema, models, and data access layer with proper relationships",
+      "medium", 20))
+    coreTasks.push(createTask(++taskId, "Data Processing",
+      "Implement data processing pipelines, transformations, and aggregations",
+      "complex", 30))
   }
   
   if (isCli) {
-    coreTasks.push({
-      id: `task-${++taskId}`,
-      name: "CLI Interface",
-      description: "Build command-line interface with argument parsing, help text, and subcommands",
-      model: "claude-sonnet-4-20250514",
-      complexity: "medium",
-      estimateMinutes: 20
-    })
-    coreTasks.push({
-      id: `task-${++taskId}`,
-      name: "Core Logic",
-      description: "Implement the main business logic and core functionality of the tool",
-      model: "claude-sonnet-4-20250514",
-      complexity: "complex",
-      estimateMinutes: 30
-    })
+    coreTasks.push(createTask(++taskId, "CLI Interface",
+      "Build command-line interface with argument parsing, help text, and subcommands",
+      "medium", 20))
+    coreTasks.push(createTask(++taskId, "Core Logic",
+      "Implement the main business logic and core functionality of the tool",
+      "complex", 30))
   }
   
   // Default core tasks if no specific type detected
   if (coreTasks.length === 0) {
-    coreTasks.push({
-      id: `task-${++taskId}`,
-      name: "Main Feature Implementation",
-      description: `Implement the primary functionality described in: ${projectIdea}`,
-      model: "claude-sonnet-4-20250514",
-      complexity: "complex",
-      estimateMinutes: 30
-    })
-    coreTasks.push({
-      id: `task-${++taskId}`,
-      name: "Data Layer",
-      description: "Set up data models, storage, and data access patterns",
-      model: "claude-sonnet-4-20250514",
-      complexity: "medium",
-      estimateMinutes: 20
-    })
+    coreTasks.push(createTask(++taskId, "Main Feature Implementation",
+      `Implement the primary functionality described in: ${projectIdea}`,
+      "complex", 30))
+    coreTasks.push(createTask(++taskId, "Data Layer",
+      "Set up data models, storage, and data access patterns",
+      "medium", 20))
   }
   
   phases.push({ id: "phase-2", name: "Core Features", tasks: coreTasks })
@@ -1647,30 +1867,15 @@ export function generateFallbackPlan(projectIdea: string): ExecutionPlan {
   
   // Phase 3: Polish & Testing
   const polishTasks: ExecutionTask[] = [
-    {
-      id: `task-${++taskId}`,
-      name: "Error Handling",
-      description: "Add comprehensive error handling, input validation, and user-friendly error messages",
-      model: "claude-3-5-haiku-20241022",
-      complexity: "simple",
-      estimateMinutes: 15
-    },
-    {
-      id: `task-${++taskId}`,
-      name: "Testing Suite",
-      description: "Write unit tests and integration tests for critical functionality",
-      model: "claude-sonnet-4-20250514",
-      complexity: "medium",
-      estimateMinutes: 25
-    },
-    {
-      id: `task-${++taskId}`,
-      name: "Documentation",
-      description: "Create README, API documentation, and inline code documentation",
-      model: "claude-3-5-haiku-20241022",
-      complexity: "simple",
-      estimateMinutes: 10
-    }
+    createTask(++taskId, "Error Handling",
+      "Add comprehensive error handling, input validation, and user-friendly error messages",
+      "simple", 15),
+    createTask(++taskId, "Testing Suite",
+      "Write unit tests and integration tests for critical functionality",
+      "medium", 25),
+    createTask(++taskId, "Documentation",
+      "Create README, API documentation, and inline code documentation",
+      "simple", 10)
   ]
   
   phases.push({ id: "phase-3", name: "Polish & Testing", tasks: polishTasks })
