@@ -173,7 +173,7 @@ const PROVIDER_NAMES: Record<string, string> = {
  * Uses the local OpenCode server running on port 4096 by default
  */
 function getClient(baseUrl?: string) {
-  const url = baseUrl || import.meta.env.VITE_OPENCODE_URL || "http://localhost:4096"
+  const url = baseUrl || import.meta.env.VITE_OPENCODE_URL || "http://localhost:4096" || 'http://localhost:4096';
   return createOpencodeClient({ baseUrl: url })
 }
 
