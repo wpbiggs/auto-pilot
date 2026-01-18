@@ -123,11 +123,9 @@ const DEFAULT_ESCALATION_CONFIG: EscalationConfig = {
   enabled: true,
   maxEscalations: 2,
   modelHierarchy: [
-    "claude-3-5-haiku-20241022",  // Fast tier
     "gpt-4o-mini",                 // Fast tier
-    "claude-sonnet-4-20250514",    // Standard tier
     "gpt-4o",                      // Standard tier
-    "claude-opus-4-20250514",      // Premium tier (most powerful)
+    "o3",                          // Premium tier (most powerful)
   ],
   webhookHandlers: [],
   includeFailedOutputInEscalation: true,
@@ -135,26 +133,42 @@ const DEFAULT_ESCALATION_CONFIG: EscalationConfig = {
 
 // Model tier mapping
 const MODEL_TIERS: Record<string, "premium" | "standard" | "fast"> = {
-  "claude-opus-4-20250514": "premium",
-  "claude-sonnet-4-20250514": "standard",
-  "claude-3-5-haiku-20241022": "fast",
+  // OpenAI models
+  "o3": "premium",
+  "o1": "premium",
   "gpt-4o": "standard",
+  "gpt-4.1": "standard",
   "gpt-4o-mini": "fast",
+  "gpt-4.1-mini": "fast",
+  // GitHub Copilot models
+  "copilot-chat": "standard",
+  // OpenCode Zen models
+  "zen": "standard",
 }
 
 // Model display names
 const MODEL_DISPLAY_NAMES: Record<string, string> = {
-  "claude-opus-4-20250514": "Claude Opus 4",
-  "claude-sonnet-4-20250514": "Claude Sonnet 4",
-  "claude-3-5-haiku-20241022": "Claude Haiku",
+  // OpenAI models
+  "o3": "OpenAI o3",
+  "o1": "OpenAI o1",
   "gpt-4o": "GPT-4o",
+  "gpt-4.1": "GPT-4.1",
   "gpt-4o-mini": "GPT-4o Mini",
+  "gpt-4.1-mini": "GPT-4.1 Mini",
+  // GitHub Copilot models
+  "copilot-chat": "GitHub Copilot",
+  // OpenCode Zen models
+  "zen": "OpenCode Zen",
 }
 
 // Provider display names
 const PROVIDER_NAMES: Record<string, string> = {
-  anthropic: "Anthropic",
   openai: "OpenAI",
+  github: "GitHub Copilot",
+  "github-copilot": "GitHub Copilot",
+  copilot: "GitHub Copilot",
+  zen: "OpenCode Zen",
+  opencode: "OpenCode",
   google: "Google",
 }
 
@@ -224,33 +238,42 @@ export async function fetchAvailableModels(baseUrl?: string): Promise<AvailableM
 
 /**
  * Get default models when SDK is not available
+ * Only includes models from commonly configured providers: OpenAI, GitHub Copilot, OpenCode Zen
  */
 function getDefaultModels(): AvailableModel[] {
   return [
-    { id: "claude-sonnet-4-20250514", name: "Claude Sonnet 4", providerId: "anthropic", providerName: "Anthropic", tier: "standard", available: true },
-    { id: "claude-opus-4-20250514", name: "Claude Opus 4", providerId: "anthropic", providerName: "Anthropic", tier: "premium", available: true },
-    { id: "claude-3-5-haiku-20241022", name: "Claude Haiku", providerId: "anthropic", providerName: "Anthropic", tier: "fast", available: true },
+    // OpenAI models
     { id: "gpt-4o", name: "GPT-4o", providerId: "openai", providerName: "OpenAI", tier: "standard", available: true },
     { id: "gpt-4o-mini", name: "GPT-4o Mini", providerId: "openai", providerName: "OpenAI", tier: "fast", available: true },
+    { id: "o3", name: "OpenAI o3", providerId: "openai", providerName: "OpenAI", tier: "premium", available: true },
+    // GitHub Copilot models
+    { id: "copilot-chat", name: "GitHub Copilot", providerId: "github", providerName: "GitHub Copilot", tier: "standard", available: true },
+    // OpenCode Zen models
+    { id: "zen", name: "OpenCode Zen", providerId: "zen", providerName: "OpenCode Zen", tier: "standard", available: true },
   ]
 }
 
 /**
  * Map a simple model name to full model configuration
+ * Only maps to configured providers: OpenAI, GitHub Copilot, OpenCode Zen
  */
 function getModelConfig(modelName: string): { providerID: string; modelID: string } {
   const modelMap: Record<string, { providerID: string; modelID: string }> = {
-    "claude-opus": { providerID: "anthropic", modelID: "claude-opus-4-20250514" },
-    "claude-sonnet": { providerID: "anthropic", modelID: "claude-sonnet-4-20250514" },
-    "claude-haiku": { providerID: "anthropic", modelID: "claude-3-5-haiku-20241022" },
+    // OpenAI models
     "gpt-4o": { providerID: "openai", modelID: "gpt-4o" },
     "gpt-4o-mini": { providerID: "openai", modelID: "gpt-4o-mini" },
-    // Also handle full model IDs
-    "claude-opus-4-20250514": { providerID: "anthropic", modelID: "claude-opus-4-20250514" },
-    "claude-sonnet-4-20250514": { providerID: "anthropic", modelID: "claude-sonnet-4-20250514" },
-    "claude-3-5-haiku-20241022": { providerID: "anthropic", modelID: "claude-3-5-haiku-20241022" },
+    "gpt-4.1": { providerID: "openai", modelID: "gpt-4.1" },
+    "gpt-4.1-mini": { providerID: "openai", modelID: "gpt-4.1-mini" },
+    "o3": { providerID: "openai", modelID: "o3" },
+    "o1": { providerID: "openai", modelID: "o1" },
+    // GitHub Copilot models
+    "copilot-chat": { providerID: "github", modelID: "copilot-chat" },
+    "copilot": { providerID: "github", modelID: "copilot-chat" },
+    // OpenCode Zen models
+    "zen": { providerID: "zen", modelID: "zen" },
   }
-  return modelMap[modelName] || { providerID: "anthropic", modelID: "claude-sonnet-4-20250514" }
+  // Default to GPT-4o (OpenAI) as the fallback - never use unconfigured providers
+  return modelMap[modelName] || { providerID: "openai", modelID: "gpt-4o" }
 }
 
 /**
@@ -371,7 +394,7 @@ The prompt should be comprehensive yet focused, guiding the AI to produce excell
     const response = await client.session.prompt({
       path: { id: sessionId },
       body: {
-        model: { providerID: "anthropic", modelID: "claude-sonnet-4-20250514" },
+        model: { providerID: "openai", modelID: "gpt-4o" },
         parts: [{ type: "text" as const, text: engineeringPrompt }]
       }
     })
@@ -1504,13 +1527,13 @@ function assignOptimalModel(complexity: string, availableModels?: AvailableModel
   const models = availableModels || cachedAvailableModels || []
   const available = models.filter(m => m.available)
   
-  // If no available models, fall back to defaults
+  // If no available models, fall back to OpenAI defaults (never use unconfigured providers)
   if (available.length === 0) {
     switch (complexity) {
-      case "complex": return "claude-sonnet-4-20250514"
-      case "medium": return "claude-sonnet-4-20250514"
-      case "simple": return "claude-3-5-haiku-20241022"
-      default: return "claude-sonnet-4-20250514"
+      case "complex": return "gpt-4o"
+      case "medium": return "gpt-4o"
+      case "simple": return "gpt-4o-mini"
+      default: return "gpt-4o"
     }
   }
   
@@ -1740,7 +1763,7 @@ Generate a realistic and actionable plan that an AI coding assistant can execute
   const response = await client.session.prompt({
     path: { id: sessionId },
     body: {
-      model: { providerID: "anthropic", modelID: "claude-sonnet-4-20250514" },
+      model: { providerID: "openai", modelID: "gpt-4o" },
       parts: [{ type: "text" as const, text: planningPrompt }]
     }
   })
