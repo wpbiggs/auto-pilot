@@ -6,7 +6,7 @@
 import { useState, useEffect, useCallback } from "react"
 import { 
   createExecutionService, 
-  createMockExecutionService, 
+  createOfflineExecutionService, 
   checkSDKConnection 
 } from "../services/execution"
 
@@ -183,7 +183,8 @@ export function LiveExecutionStage({ plan, onComplete, onBack }) {
         addLog("success", "Connected to OpenCode SDK - using real AI agents")
         addLog("info", "🛡️ Failure escalation enabled - tasks will auto-escalate to stronger models on failure")
       } else {
-        addLog("warning", "SDK not available - running in demo mode")
+        addLog("error", "SDK not available - cannot execute tasks")
+        addLog("warning", "Please start the OpenCode server to enable execution")
       }
 
       // Create appropriate executor
@@ -215,7 +216,7 @@ export function LiveExecutionStage({ plan, onComplete, onBack }) {
             },
             onEscalation: handleEscalation,
           })
-        : createMockExecutionService(plan, handleUpdate)
+        : createOfflineExecutionService(plan, handleUpdate)
       
       setExecutor(exec)
     }
@@ -344,13 +345,13 @@ export function LiveExecutionStage({ plan, onComplete, onBack }) {
           <div className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm ${
             sdkConnected 
               ? "bg-green-500/10 border border-green-500/30 text-green-400"
-              : "bg-yellow-500/10 border border-yellow-500/30 text-yellow-400"
+              : "bg-red-500/10 border border-red-500/30 text-red-400"
           }`}>
-            <span>{sdkConnected ? "🟢" : "🟡"}</span>
+            <span>{sdkConnected ? "🟢" : "🔴"}</span>
             <span>
               {sdkConnected 
                 ? "Connected to OpenCode SDK - Real AI agents are executing tasks"
-                : "Demo Mode - SDK not connected, using simulated execution"
+                : "SDK Not Connected - Start the OpenCode server to enable execution"
               }
             </span>
           </div>
