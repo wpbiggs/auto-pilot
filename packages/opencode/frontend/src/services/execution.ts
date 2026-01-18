@@ -1381,7 +1381,7 @@ export const createMockExecutionService = createOfflineExecutionService
 
 /**
  * Check if OpenCode SDK is available
- * Attempts to connect to the SDK server with a timeout
+ * Uses the /config endpoint which is lightweight and always available
  */
 export async function checkSDKConnection(baseUrl?: string): Promise<boolean> {
   try {
@@ -1393,8 +1393,9 @@ export async function checkSDKConnection(baseUrl?: string): Promise<boolean> {
       setTimeout(() => reject(new Error("Connection timeout")), 5000)
     })
     
+    // Use config.get() - lightweight endpoint that's always available
     const response = await Promise.race([
-      client.session.list(),
+      client.config.get(),
       timeoutPromise
     ])
     
