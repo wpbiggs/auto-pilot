@@ -414,16 +414,17 @@ function getDefaultModels(): AvailableModel[] {
 /**
  * Map a model ID to full model configuration
  * Dynamically looks up the provider from cached available models
- * ALWAYS prioritizes native providers (OpenAI for GPT, Anthropic for Claude, etc.)
+ * Priority: Native provider first, then GitHub Copilot as proxy, then any available
  */
 function getModelConfig(modelName: string): { providerID: string; modelID: string } {
   const modelLower = modelName.toLowerCase()
   
   // Define native provider mapping based on model ID prefix
-  // These MUST be used when available - no proxy providers
+  // Priority 1: Try native providers first
   const NATIVE_PROVIDER_MAP: { prefix: string; providers: string[] }[] = [
     { prefix: "gpt-", providers: ["openai"] },
     { prefix: "gpt4", providers: ["openai"] },  // Handle gpt4o, gpt4-turbo etc
+    { prefix: "gpt5", providers: ["openai"] },  // Handle gpt5, gpt5.1 etc
     { prefix: "o1", providers: ["openai"] },
     { prefix: "o3", providers: ["openai"] },
     { prefix: "claude", providers: ["anthropic"] },
@@ -432,63 +433,76 @@ function getModelConfig(modelName: string): { providerID: string; modelID: strin
     { prefix: "zen", providers: ["zen", "opencode"] },
   ]
   
-  // Determine the required native provider for this model
-  let requiredProviders: string[] | null = null
+  // GitHub Copilot can proxy GPT/Claude/Gemini models
+  const COPILOT_PROVIDERS = ["github", "github-copilot", "copilot"]
+  
+  // Determine the native provider for this model type
+  let nativeProviders: string[] | null = null
   for (const { prefix, providers } of NATIVE_PROVIDER_MAP) {
     if (modelLower.startsWith(prefix)) {
-      requiredProviders = providers
+      nativeProviders = providers
       break
     }
   }
   
   // Look up from cached available models
   if (cachedAvailableModels && cachedAvailableModels.length > 0) {
-    // Find all models with this ID
-    const exactMatches = cachedAvailableModels.filter(m => m.id === modelName)
+    // Find all models with this ID across all providers
+    const exactMatches = cachedAvailableModels.filter(m => m.id === modelName && m.available)
     
-    // If we know the native provider, search for it across ALL models
-    if (requiredProviders) {
-      // First try exact match with native provider
-      for (const match of exactMatches) {
-        if (requiredProviders.includes(match.providerId.toLowerCase())) {
-          console.log(`[getModelConfig] ✓ Native provider ${match.providerId} for ${modelName}`)
-          return { providerID: match.providerId, modelID: match.id }
+    if (exactMatches.length > 0) {
+      // Priority 1: Try native provider first
+      if (nativeProviders) {
+        const nativeMatch = exactMatches.find(m => 
+          nativeProviders!.includes(m.providerId.toLowerCase())
+        )
+        if (nativeMatch) {
+          console.log(`[getModelConfig] ✓ Native provider ${nativeMatch.providerId} for ${modelName}`)
+          return { providerID: nativeMatch.providerId, modelID: nativeMatch.id }
         }
       }
       
-      // If no exact match, search all available models for native provider offering this model type
-      const nativeProviderModels = cachedAvailableModels.filter(m => 
-        requiredProviders!.includes(m.providerId.toLowerCase()) && m.available
+      // Priority 2: Try GitHub Copilot as proxy (for GPT/Claude/Gemini models)
+      const copilotMatch = exactMatches.find(m => 
+        COPILOT_PROVIDERS.includes(m.providerId.toLowerCase())
       )
-      
-      // Find a model from native provider that matches or is similar
-      const nativeMatch = nativeProviderModels.find(m => m.id === modelName)
-      if (nativeMatch) {
-        console.log(`[getModelConfig] ✓ Found native ${nativeMatch.providerId} for ${modelName}`)
-        return { providerID: nativeMatch.providerId, modelID: nativeMatch.id }
+      if (copilotMatch) {
+        console.log(`[getModelConfig] ✓ Using GitHub Copilot proxy for ${modelName} (native not available)`)
+        return { providerID: copilotMatch.providerId, modelID: copilotMatch.id }
       }
       
-      // Native provider exists but doesn't have this exact model - use the native provider anyway
+      // Priority 3: Use any available provider
+      const model = exactMatches[0]!
+      console.log(`[getModelConfig] Using provider ${model.providerId} for ${modelName}`)
+      return { providerID: model.providerId, modelID: model.id }
+    }
+    
+    // Model not found by exact match - check if native provider is available
+    if (nativeProviders) {
+      const nativeProviderModels = cachedAvailableModels.filter(m => 
+        nativeProviders!.includes(m.providerId.toLowerCase()) && m.available
+      )
       if (nativeProviderModels.length > 0) {
         const nativeProvider = nativeProviderModels[0]!.providerId
         console.log(`[getModelConfig] ✓ Using native provider ${nativeProvider} for ${modelName} (provider available)`)
         return { providerID: nativeProvider, modelID: modelName }
       }
       
-      console.warn(`[getModelConfig] ⚠ Native providers ${requiredProviders.join(",")} not available for ${modelName}`)
-    }
-    
-    // No native provider requirement or not found - use first exact match
-    if (exactMatches.length > 0) {
-      const model = exactMatches[0]!
-      console.log(`[getModelConfig] Using available provider ${model.providerId} for ${modelName}`)
-      return { providerID: model.providerId, modelID: model.id }
+      // Check if GitHub Copilot is available as fallback
+      const copilotModels = cachedAvailableModels.filter(m => 
+        COPILOT_PROVIDERS.includes(m.providerId.toLowerCase()) && m.available
+      )
+      if (copilotModels.length > 0) {
+        const copilotProvider = copilotModels[0]!.providerId
+        console.log(`[getModelConfig] ✓ Using GitHub Copilot for ${modelName} (native provider not configured)`)
+        return { providerID: copilotProvider, modelID: modelName }
+      }
     }
   }
   
   // Fallback: Use heuristic based on model name prefix
   // This handles cases where models haven't been cached yet
-  if (modelLower.startsWith("gpt-") || modelLower.startsWith("gpt4") || modelLower.startsWith("o1") || modelLower.startsWith("o3")) {
+  if (modelLower.startsWith("gpt-") || modelLower.startsWith("gpt4") || modelLower.startsWith("gpt5") || modelLower.startsWith("o1") || modelLower.startsWith("o3")) {
     console.log(`[getModelConfig] Heuristic: OpenAI for ${modelName}`)
     return { providerID: "openai", modelID: modelName }
   }
