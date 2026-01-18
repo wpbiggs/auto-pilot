@@ -214,6 +214,11 @@ async function getBestAvailableModelConfig(complexity: "fast" | "standard" | "pr
     await fetchAvailableModels();
   }
   
+  // Defensive null check after fetch attempt
+  if (!cachedAvailableModels) {
+    throw new Error("[getBestAvailableModelConfig] Failed to fetch available models.")
+  }
+  
   const available = cachedAvailableModels.filter(m => m.available)
   if (available.length === 0) {
     throw new Error("[getBestAvailableModelConfig] No available models configured.")
@@ -917,6 +922,15 @@ export function createExecutionService(
   const taskEscalations = new Map<string, number>() // Track escalation count per task
   const taskEscalationHistory = new Map<string, Array<{model: string, error: string, output: string}>>()
   
+  // Track active task controllers for cancellation
+  const activeControllers = new Map<string, AbortController>()
+  const activeSessions = new Map<string, string>() // taskId -> sessionId for cancellation
+  
+  // Track completed/failed tasks to prevent re-execution
+  const completedTasks = new Set<string>()
+  const failedTasks = new Set<string>()
+  const executingTasks = new Set<string>() // Prevent duplicate concurrent execution
+  
   // Initialize all tasks as queued
   plan.tasks.forEach(task => {
     taskStates.set(task.id, { status: "queued", progress: 0 })
@@ -976,7 +990,29 @@ export function createExecutionService(
   }
 
   const executeTask = async (task: ExecutionTask): Promise<void> => {
+    // CRITICAL: Guard against duplicate execution
+    if (completedTasks.has(task.id)) {
+      console.warn(`[ExecutionService] Task ${task.id} already completed, skipping re-execution`)
+      return
+    }
+    if (failedTasks.has(task.id)) {
+      console.warn(`[ExecutionService] Task ${task.id} already failed permanently, skipping re-execution`)
+      return
+    }
+    if (executingTasks.has(task.id)) {
+      console.warn(`[ExecutionService] Task ${task.id} already executing, skipping duplicate execution`)
+      return
+    }
+    
+    // Mark task as currently executing
+    executingTasks.add(task.id)
+    console.log(`[ExecutionService] Starting task ${task.id}: ${task.name}`)
+    
     const startTime = Date.now()
+    
+    // Create AbortController for this task
+    const abortController = new AbortController()
+    activeControllers.set(task.id, abortController)
     
     // Get phase context for tailored prompts
     const phaseContext = getPhaseContextForTask(task)
@@ -1003,6 +1039,13 @@ export function createExecutionService(
       }
 
       const sessionId = sessionResult.data.id
+      activeSessions.set(task.id, sessionId) // Store for cancellation
+      
+      // Check if aborted during session creation
+      if (abortController.signal.aborted) {
+        throw new Error("Task was cancelled during session creation")
+      }
+      
       emitLog("info", `Created session for: ${task.name}`)
 
       // Update progress
@@ -1019,68 +1062,130 @@ export function createExecutionService(
       })
 
       // Execute via SDK session.prompt with timeout to prevent hanging
+      console.log(`[ExecutionService] Executing task ${task.id} with model:`, modelConfig)
       emitLog("info", `Executing with ${modelConfig.modelID}...`)
       taskStates.set(task.id, { status: "running", progress: 50 })
       onUpdate(getStatus(), null)
 
-      // Wrap prompt call with timeout (5 minute timeout for long-running tasks)
-      const TASK_TIMEOUT_MS = 5 * 60 * 1000 // 5 minutes
-      const timeoutPromise = new Promise<never>((_, reject) => {
-        setTimeout(() => reject(new Error("Task execution timed out after 5 minutes")), TASK_TIMEOUT_MS)
-      })
-
-      const response = await Promise.race([
-        client!.session.prompt({
-          path: { id: sessionId },
-          body: {
-            model: modelConfig,
-            parts: [{ type: "text" as const, text: prompt }]
-          }
-        }),
-        timeoutPromise
-      ])
-
-      // Extract output
-      const output = extractResponseText(response)
-      const duration = Date.now() - startTime
+      // Complexity-based timeout: simple=3min, medium=5min, complex=10min
+      const TIMEOUT_BY_COMPLEXITY: Record<string, number> = {
+        simple: 3 * 60 * 1000,
+        medium: 5 * 60 * 1000,
+        complex: 10 * 60 * 1000,
+      }
+      const TASK_TIMEOUT_MS = TIMEOUT_BY_COMPLEXITY[task.complexity] || 5 * 60 * 1000
       
-      // Estimate tokens and cost (rough estimation)
-      const estimatedTokens = Math.round((prompt.length + output.length) / 4)
-      const costPerToken = modelConfig.modelID.includes("opus") ? 0.015 / 1000 
-        : modelConfig.modelID.includes("gpt-4o") && !modelConfig.modelID.includes("mini") ? 0.01 / 1000
-        : 0.003 / 1000
-      const estimatedCost = estimatedTokens * costPerToken
-
-      // Update totals
-      totalTokensUsed += estimatedTokens
-      totalCost += estimatedCost
-      totalDuration += duration
-
-      // Update task status
-      taskStates.set(task.id, {
-        status: "completed",
-        progress: 100,
-        output: output.substring(0, 2000) + (output.length > 2000 ? "..." : ""),
-        tokensUsed: estimatedTokens,
-        cost: estimatedCost,
-        duration,
+      // Create a timeout that also triggers abort
+      let timeoutId: ReturnType<typeof setTimeout> | null = null
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        timeoutId = setTimeout(() => {
+          console.error(`[ExecutionService] Task ${task.id} timed out after ${TASK_TIMEOUT_MS / 1000}s`)
+          abortController.abort()
+          reject(new Error(`Task execution timed out after ${Math.round(TASK_TIMEOUT_MS / 60000)} minutes`))
+        }, TASK_TIMEOUT_MS)
+      })
+      
+      // Also reject on abort signal
+      const abortPromise = new Promise<never>((_, reject) => {
+        abortController.signal.addEventListener("abort", () => {
+          reject(new Error("Task was cancelled"))
+        })
       })
 
-      onUpdate(getStatus(), { 
-        type: "task_completed", 
-        taskId: task.id,
-        output: output.substring(0, 500),
-        tokensUsed: estimatedTokens,
-        cost: estimatedCost,
-      })
-      emitLog("success", `Completed: ${task.name} (${Math.round(duration / 1000)}s)`)
+      try {
+        const response = await Promise.race([
+          client!.session.prompt({
+            path: { id: sessionId },
+            body: {
+              model: modelConfig,
+              parts: [{ type: "text" as const, text: prompt }]
+            }
+          }),
+          timeoutPromise,
+          abortPromise
+        ])
+        
+        // Clear timeout on successful completion
+        if (timeoutId) clearTimeout(timeoutId)
+
+        // Extract output
+        const output = extractResponseText(response)
+        const duration = Date.now() - startTime
+        
+        // Estimate tokens and cost (rough estimation)
+        const estimatedTokens = Math.round((prompt.length + output.length) / 4)
+        const costPerToken = modelConfig.modelID.includes("opus") ? 0.015 / 1000 
+          : modelConfig.modelID.includes("gpt-4o") && !modelConfig.modelID.includes("mini") ? 0.01 / 1000
+          : 0.003 / 1000
+        const estimatedCost = estimatedTokens * costPerToken
+
+        // Update totals
+        totalTokensUsed += estimatedTokens
+        totalCost += estimatedCost
+        totalDuration += duration
+
+        // Update task status
+        taskStates.set(task.id, {
+          status: "completed",
+          progress: 100,
+          output: output.substring(0, 2000) + (output.length > 2000 ? "..." : ""),
+          tokensUsed: estimatedTokens,
+          cost: estimatedCost,
+          duration,
+        })
+        
+        // Mark as permanently completed - prevents re-execution
+        completedTasks.add(task.id)
+        executingTasks.delete(task.id)
+        activeControllers.delete(task.id)
+        activeSessions.delete(task.id)
+        console.log(`[ExecutionService] Task ${task.id} completed successfully`)
+
+        onUpdate(getStatus(), { 
+          type: "task_completed", 
+          taskId: task.id,
+          output: output.substring(0, 500),
+          tokensUsed: estimatedTokens,
+          cost: estimatedCost,
+        })
+        emitLog("success", `Completed: ${task.name} (${Math.round(duration / 1000)}s)`)
+        
+      } catch (innerError: any) {
+        // Clear timeout if it exists
+        if (timeoutId) clearTimeout(timeoutId)
+        // Re-throw to outer catch for retry/escalation handling
+        throw innerError
+      }
 
     } catch (error: any) {
       const duration = Date.now() - startTime
       console.error(`[ExecutionService] Task ${task.id} failed:`, error)
       
+      // Clean up controllers
+      activeControllers.delete(task.id)
+      activeSessions.delete(task.id)
+      executingTasks.delete(task.id)
+      
       const failedOutput = taskStates.get(task.id)?.output || ""
       const errorMessage = error.message || "Unknown error"
+      
+      // Check if this was a cancellation - don't retry cancelled tasks
+      if (errorMessage.includes("cancelled") || abortController.signal.aborted) {
+        emitLog("warning", `Task ${task.name} was cancelled`)
+        taskStates.set(task.id, {
+          status: "failed",
+          progress: 0,
+          error: "Task was cancelled",
+          duration,
+        })
+        failedTasks.add(task.id)
+        onUpdate(getStatus(), { 
+          type: "task_failed", 
+          taskId: task.id,
+          error: "Task was cancelled",
+        })
+        return
+      }
       
       // Record in escalation history
       const history = taskEscalationHistory.get(task.id) || []
@@ -1089,12 +1194,15 @@ export function createExecutionService(
       
       // Check if should retry with same model first
       const retries = taskRetries.get(task.id) || 0
+      console.log(`[ExecutionService] Task ${task.id} retry check: attempt ${retries + 1}/${config.maxRetries + 1}`)
+      
       if (config.retryOnFailure && retries < config.maxRetries) {
         taskRetries.set(task.id, retries + 1)
         emitLog("warning", `Retrying ${task.name} (attempt ${retries + 2}/${config.maxRetries + 1})`)
         
-        // Reset to queued for retry
+        // Reset to queued for retry - but NOT executingTasks since we're calling executeTask
         taskStates.set(task.id, { status: "queued", progress: 0 })
+        // executingTasks already deleted above, so recursive call will work
         await executeTask(task)
         return
       }
@@ -1151,6 +1259,10 @@ export function createExecutionService(
         error: errorMessage,
         duration,
       })
+      
+      // Mark as permanently failed - prevents re-execution
+      failedTasks.add(task.id)
+      console.log(`[ExecutionService] Task ${task.id} permanently failed after ${currentEscalations} escalations`)
       
       // Fire failure webhook
       const failureEvent: EscalationEvent = {
@@ -1276,6 +1388,11 @@ export function createExecutionService(
         duration,
       })
       
+      // Mark as permanently completed after successful escalation
+      completedTasks.add(task.id)
+      executingTasks.delete(task.id)
+      console.log(`[ExecutionService] Task ${task.id} completed via escalation to ${escalatedModel}`)
+      
       // Fire success webhook
       const successEvent: EscalationEvent = {
         type: "escalation_completed",
@@ -1382,6 +1499,16 @@ export function createExecutionService(
           await new Promise(r => setTimeout(r, 100))
           if (!running) break
         }
+        
+        // Skip already completed or permanently failed tasks
+        if (completedTasks.has(task.id)) {
+          console.log(`[ExecutionService] Skipping completed task: ${task.id}`)
+          continue
+        }
+        if (failedTasks.has(task.id)) {
+          console.log(`[ExecutionService] Skipping permanently failed task: ${task.id}`)
+          continue
+        }
 
         await executeTask(task)
       }
@@ -1399,6 +1526,28 @@ export function createExecutionService(
   // Start execution
   execute()
 
+  // Helper to cancel a specific task
+  const cancelTask = (taskId: string) => {
+    const controller = activeControllers.get(taskId)
+    if (controller) {
+      console.log(`[ExecutionService] Cancelling task: ${taskId}`)
+      controller.abort()
+      activeControllers.delete(taskId)
+      activeSessions.delete(taskId)
+    }
+  }
+  
+  // Helper to cancel all active tasks
+  const cancelAllTasks = () => {
+    console.log(`[ExecutionService] Cancelling all ${activeControllers.size} active tasks`)
+    for (const [taskId, controller] of activeControllers) {
+      controller.abort()
+      emitLog("warning", `Cancelled task: ${taskId}`)
+    }
+    activeControllers.clear()
+    activeSessions.clear()
+  }
+
   return {
     pause: () => {
       paused = true
@@ -1410,8 +1559,10 @@ export function createExecutionService(
     },
     cancel: () => {
       running = false
-      emitLog("warning", "Execution cancelled")
+      cancelAllTasks() // Abort all active tasks
+      emitLog("warning", "Execution cancelled - all active tasks aborted")
     },
+    cancelTask, // Expose for individual task cancellation
     isPaused: () => paused,
     getStatus,
   }
