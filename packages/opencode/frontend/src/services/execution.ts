@@ -1818,6 +1818,8 @@ Provide the plan in the following format:
 
 Generate a realistic and actionable plan that an AI coding assistant can execute.`
 
+  // Fetch available models from SDK before model selection
+    await fetchAvailableModels();
   // Use the best available standard-tier model for plan generation
   const modelConfig = getBestAvailableModelConfig("standard")
   
