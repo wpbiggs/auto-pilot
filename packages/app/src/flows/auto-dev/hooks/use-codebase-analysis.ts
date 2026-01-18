@@ -164,7 +164,7 @@ async function collectFiles(
     } else {
       // Expand directory
       try {
-        const contents = await sdk.file.list({ path: selected.path })
+        const contents = await sdk.file.list({ query: { path: selected.path } })
         
         if (contents.data) {
           for (const item of contents.data) {
@@ -176,7 +176,7 @@ async function collectFiles(
             
             // Recursively expand subdirectories (limit depth)
             if (item.type === "directory" && !item.ignored) {
-              const subContents = await sdk.file.list({ path: item.path })
+              const subContents = await sdk.file.list({ query: { path: item.path } })
               if (subContents.data) {
                 for (const subItem of subContents.data) {
                   allFiles.push({
@@ -223,7 +223,7 @@ async function analyzeFiles(
     
     // Try to read file content for deeper analysis
     try {
-      const content = await sdk.file.read({ path: file.path })
+      const content = await sdk.file.read({ query: { path: file.path } })
       
       if (content.data?.type === "text") {
         const text = content.data.content
@@ -340,15 +340,15 @@ async function detectTechStack(
   
   // Check for lock files to detect package manager
   try {
-    await sdk.file.read({ path: "bun.lockb" })
+    await sdk.file.read({ query: { path: "bun.lockb" } })
     packageManager = "bun"
   } catch {}
   try {
-    await sdk.file.read({ path: "pnpm-lock.yaml" })
+    await sdk.file.read({ query: { path: "pnpm-lock.yaml" } })
     packageManager = "pnpm"
   } catch {}
   try {
-    await sdk.file.read({ path: "yarn.lock" })
+    await sdk.file.read({ query: { path: "yarn.lock" } })
     packageManager = "yarn"
   } catch {}
   
@@ -375,7 +375,7 @@ async function parseDependencies(
   const devDependencies: DependencyInfo[] = []
   
   try {
-    const result = await sdk.file.read({ path: "package.json" })
+    const result = await sdk.file.read({ query: { path: "package.json" } })
     
     if (result.data?.type === "text") {
       const pkg = JSON.parse(result.data.content)

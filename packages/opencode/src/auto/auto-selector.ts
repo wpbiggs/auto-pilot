@@ -5,8 +5,6 @@ import { generateObject } from "ai"
 import { SystemPrompt } from "../session/system"
 import { Config } from "../config/config"
 import { Log } from "../util/log"
-import { SystemData } from "../app/system"
-import { Instance } from "../project/instance"
 
 const TaskAnalysisResult = z.object({
   taskType: z.enum(["coding", "exploration", "documentation", "planning", "debugging", "testing", "review"]),
@@ -26,85 +24,49 @@ const TaskAnalysisResult = z.object({
 export type TaskAnalysis = z.infer<typeof TaskAnalysisResult>
 
 export namespace AutoSelector {
+  // Re-export TaskAnalysis type within namespace for external access
+  export type TaskAnalysis = z.infer<typeof TaskAnalysisResult>
+  
   const log = Log.create({ service: "auto-selector" })
 
   const TASK_ANALYSIS_PROMPT = `
- You are an intelligent task analyzer for OpenCode. Your job is to analyze user requests and determine the optimal agent and model for the task.
- 
- Available agents:
- - build: Primary agent for coding and implementation tasks
- - plan: Primary agent for planning and architectural design
- - general: General-purpose agent for multi-step tasks and parallel execution
- - explore: Specialized agent for codebase exploration and research
- - review: Specialized agent for code reviews
- - test: Specialized agent for testing
- - debug: Specialized agent for debugging
- - docs: Specialized agent for documentation
- 
- Task types and their characteristics:
- - coding: Writing, modifying, or implementing code
- - exploration: Searching, analyzing, or understanding codebases
- - documentation: Creating or updating documentation
- - planning: Architectural design, project planning
- - debugging: Finding and fixing issues
- - testing: Writing tests or validation
- - review: Code review and analysis
- 
- Complexity guidelines:
- - simple: Single file changes, basic configurations, straightforward tasks
- - medium: Multiple files, moderate complexity, some coordination needed
- - complex: Large-scale changes, multiple systems, high coordination required
- 
- Model selection guidelines:
- - Use smaller/faster models (like haiku) for simple tasks, documentation, and basic exploration
- - Use medium models (like sonnet) for coding, debugging, and medium complexity tasks
- - Use larger models (like opus) for complex planning, architecture, and difficult debugging
- 
- Analyze the user request and provide your recommendations in the specified JSON format.
- `
+You are an intelligent task analyzer for OpenCode. Your job is to analyze user requests and determine the optimal agent and model for the task.
 
-  async function listModels() {
-    const providers = await Provider.list()
-    return Object.values(providers).flatMap((provider) =>
-      Object.values(provider.models ?? {}).map((model) => ({
-        providerID: provider.id,
-        modelID: model.id,
-      })),
-    )
-  }
+Available agents:
+- build: Primary agent for coding and implementation tasks
+- plan: Primary agent for planning and architectural design
+- general: General-purpose agent for multi-step tasks and parallel execution
+- explore: Specialized agent for codebase exploration and research
 
-  function parseModelKey(value: string) {
-    if (value.includes(":")) return value.split(":")
-    if (value.includes("/")) return value.split("/")
-    return []
-  }
+Task types and their characteristics:
+- coding: Writing, modifying, or implementing code
+- exploration: Searching, analyzing, or understanding codebases
+- documentation: Creating or updating documentation
+- planning: Architectural design, project planning
+- debugging: Finding and fixing issues
+- testing: Writing tests or validation
+- review: Code review and analysis
 
-  function resolveModelKey(value: string | undefined, models: { providerID: string; modelID: string }[]) {
-    if (!value) return
-    const parts = parseModelKey(value)
-    if (parts.length === 2) {
-      const match = models.find((model) => model.providerID === parts[0] && model.modelID === parts[1])
-      if (match) return match
-    }
-    const fallback = models.find((model) => model.modelID === value)
-    if (fallback) return fallback
-  }
+Complexity guidelines:
+- simple: Single file changes, basic configurations, straightforward tasks
+- medium: Multiple files, moderate complexity, some coordination needed
+- complex: Large-scale changes, multiple systems, high coordination required
 
-  function filterModels(models: { providerID: string; modelID: string }[], providers: string[] | undefined) {
-    if (!providers || providers.length === 0) return models
-    return models.filter((model) => providers.includes(model.providerID))
-  }
+Model selection guidelines:
+- Use smaller/faster models (like haiku) for simple tasks, documentation, and basic exploration
+- Use medium models (like sonnet) for coding, debugging, and medium complexity tasks
+- Use larger models (like opus) for complex planning, architecture, and difficult debugging
+
+Analyze the user request and provide your recommendations in the specified JSON format.
+`
 
   export async function analyzeTask(userPrompt: string): Promise<TaskAnalysis> {
     const config = await Config.get()
-    const settings = await SystemData.getSettings(Instance.project.id)
-    const models = await listModels()
-    const override = resolveModelKey(settings.models?.analyzeModel, models)
-    const fallback = override ?? (await Provider.defaultModel())
-    const model = await Provider.getModel(fallback.providerID, fallback.modelID)
+    const defaultModel = await Provider.defaultModel()
+    const model = await Provider.getModel(defaultModel.providerID, defaultModel.modelID)
     const language = await Provider.getLanguage(model)
 
-    const system = SystemPrompt.header(fallback.providerID)
+    const system = SystemPrompt.header(defaultModel.providerID)
     system.push(TASK_ANALYSIS_PROMPT)
 
     try {
@@ -148,54 +110,66 @@ export namespace AutoSelector {
 
   export async function selectOptimalModel(
     taskAnalysis: TaskAnalysis,
-    settings?: SystemData.Settings,
   ): Promise<{ providerID: string; modelID: string }> {
-    const current = settings ?? (await SystemData.getSettings(Instance.project.id))
-    const items = await listModels()
-    const filtered = filterModels(items, current.models?.selectableProviders)
-    const models = filtered.length > 0 ? filtered : items
+    const config = await Config.get()
+    const providers = await Provider.list()
+    
+    // Collect all available models from providers
+    const availableModels: Array<{ providerID: string; modelID: string }> = []
+    for (const [providerID, provider] of Object.entries(providers)) {
+      for (const modelID of Object.keys(provider.models)) {
+        availableModels.push({ providerID, modelID })
+      }
+    }
 
-    const simpleMatch =
-      taskAnalysis.complexity === "simple"
-        ? models.find(
-            (model) =>
-              model.modelID.toLowerCase().includes("haiku") ||
-              model.modelID.toLowerCase().includes("flash") ||
-              model.modelID.toLowerCase().includes("small"),
-          )
-        : undefined
-    const complexMatch =
-      taskAnalysis.complexity === "complex"
-        ? models.find(
-            (model) =>
-              model.modelID.toLowerCase().includes("opus") ||
-              model.modelID.toLowerCase().includes("gpt-4") ||
-              model.modelID.toLowerCase().includes("large"),
-          )
-        : undefined
-    const suggestedMatch = taskAnalysis.suggestedModel
-      ? models.find(
-          (model) =>
-            model.providerID === taskAnalysis.suggestedModel.providerID &&
-            model.modelID === taskAnalysis.suggestedModel.modelID,
-        )
-      : undefined
-    const configured = resolveModelKey(current.models?.defaultModel, models)
-    const target = simpleMatch ?? complexMatch ?? suggestedMatch ?? configured ?? (await Provider.defaultModel())
+    // Model selection logic based on task analysis
+    let targetModel: { providerID: string; modelID: string } | null = null
+
+    if (taskAnalysis.complexity === "simple") {
+      // Prefer smaller/faster models for simple tasks
+      targetModel = availableModels.find(
+        (m: { providerID: string; modelID: string }) =>
+          m.modelID.toLowerCase().includes("haiku") ||
+          m.modelID.toLowerCase().includes("flash") ||
+          m.modelID.toLowerCase().includes("small"),
+      ) ?? null
+    } else if (taskAnalysis.complexity === "complex") {
+      // Prefer larger models for complex tasks
+      targetModel = availableModels.find(
+        (m: { providerID: string; modelID: string }) =>
+          m.modelID.toLowerCase().includes("opus") ||
+          m.modelID.toLowerCase().includes("gpt-4") ||
+          m.modelID.toLowerCase().includes("large"),
+      ) ?? null
+    }
+
+    // If no specific model found, use the suggested model from analysis
+    if (!targetModel && taskAnalysis.suggestedModel) {
+      const suggested = availableModels.find(
+        (m: { providerID: string; modelID: string }) =>
+          m.providerID === taskAnalysis.suggestedModel.providerID && m.modelID === taskAnalysis.suggestedModel.modelID,
+      )
+      if (suggested) targetModel = suggested
+    }
+
+    // Final fallback to configured default model
+    if (!targetModel) {
+      targetModel = await Provider.defaultModel()
+    }
 
     log.info("model selected", {
-      providerID: target.providerID,
-      modelID: target.modelID,
+      providerID: targetModel.providerID,
+      modelID: targetModel.modelID,
       reasoning: taskAnalysis.suggestedModel.reasoning || "fallback selection",
     })
 
-    return target
+    return targetModel
   }
 
-  export async function selectOptimalAgent(taskAnalysis: TaskAnalysis, fallback?: string): Promise<string> {
+  export async function selectOptimalAgent(taskAnalysis: TaskAnalysis): Promise<string> {
     // Validate that the suggested agent exists and is accessible
     const agents = await Agent.list()
-    const suggestedAgent = agents.find((agent) => agent.name === taskAnalysis.suggestedAgent)
+    const suggestedAgent = agents.find((a) => a.name === taskAnalysis.suggestedAgent)
 
     if (suggestedAgent) {
       log.info("agent selected", {
@@ -205,17 +179,26 @@ export namespace AutoSelector {
       return suggestedAgent.name
     }
 
-    const map = {
-      coding: "build",
-      planning: "plan",
-      exploration: "explore",
-      review: "review",
-      debugging: "debug",
-      testing: "test",
-      documentation: "docs",
+    // Fallback logic based on task type
+    let fallbackAgent = "general" // default fallback
+
+    switch (taskAnalysis.taskType) {
+      case "coding":
+      case "debugging":
+      case "testing":
+        fallbackAgent = "build"
+        break
+      case "planning":
+        fallbackAgent = "plan"
+        break
+      case "exploration":
+        fallbackAgent = "explore"
+        break
+      case "documentation":
+      case "review":
+        fallbackAgent = "general"
+        break
     }
-    const mapped = map[taskAnalysis.taskType] ?? "general"
-    const fallbackAgent = fallback ?? mapped
 
     log.info("agent fallback selected", {
       agent: fallbackAgent,
@@ -231,12 +214,8 @@ export namespace AutoSelector {
     analysis: TaskAnalysis
   }> {
     const analysis = await analyzeTask(userPrompt)
-    const settings = await SystemData.getSettings(Instance.project.id)
-    const auto = settings.agents.autoSelect
-    const agent = auto ? await selectOptimalAgent(analysis, settings.agents.defaultAgent) : settings.agents.defaultAgent
-    const model = auto
-      ? await selectOptimalModel(analysis, settings)
-      : (resolveModelKey(settings.models?.defaultModel, await listModels()) ?? (await Provider.defaultModel()))
+    const agent = await selectOptimalAgent(analysis)
+    const model = await selectOptimalModel(analysis)
 
     return {
       agent,

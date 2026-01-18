@@ -145,7 +145,7 @@ export function CodebaseSelector(props: CodebaseSelectorProps) {
     }
 
     try {
-      const result = await sdk.client.find.files({ query, dirs: true })
+      const result = await sdk.client.find.files({ query, dirs: "true" })
       
       if (result.data) {
         setSearchResults(result.data.slice(0, 20))

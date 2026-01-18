@@ -16,7 +16,6 @@ import { NamedError } from "@opencode-ai/util/error"
 import { ModelsDev } from "../provider/models"
 import { Ripgrep } from "../file/ripgrep"
 import { Config } from "../config/config"
-import { AutoSelector } from "../auto/auto-selector"
 import { File } from "../file"
 import { LSP } from "../lsp"
 import { Format } from "../format"
@@ -80,7 +79,7 @@ export namespace Server {
   export const App: () => Hono = lazy(
     () =>
       // TODO: Break server.ts into smaller route files to fix type inference
-      // @ts-expect-error Type instantiation is excessively deep - route chain is too long for TS
+      // @ts-ignore - Type instantiation is excessively deep, but code is correct
       app
         .onError((err, c) => {
           log.error("failed", {
@@ -290,27 +289,6 @@ export namespace Server {
           }),
         )
         .use(validator("query", z.object({ directory: z.string().optional() })))
-
-        .post(
-          "/auto/analyze",
-          describeRoute({
-            summary: "Analyze task",
-            description: "Analyze a user prompt to determine the best agent and model.",
-            operationId: "auto.analyze",
-            responses: {
-              200: {
-                description: "Analysis result",
-                content: { "application/json": { schema: resolver(z.any()) } },
-              },
-            },
-          }),
-          validator("json", z.object({ prompt: z.string() })),
-          async (c) => {
-            const { prompt } = c.req.valid("json")
-            const result = await AutoSelector.getAutoSelection(prompt)
-            return c.json(result)
-          },
-        )
 
         .route("/project", ProjectRoute)
         .route("/app", AppRoute)
@@ -908,12 +886,6 @@ export namespace Server {
           async (c) => {
             const body = c.req.valid("json") ?? {}
             const session = await Session.create(body)
-
-            // If an agent is specified in the body (e.g. from AutoSelector),
-            // ensure the session knows about it.
-            // Note: Session.create might already handle this if 'agent' is in 'body'.
-            // If not, we might need to explicitly set it or create the initial message.
-
             return c.json(session)
           },
         )
@@ -2070,13 +2042,8 @@ export namespace Server {
           ),
           async (c) => {
             const path = c.req.valid("query").path
-            try {
-              const content = await File.list(path)
-              return c.json(content)
-            } catch (e) {
-              if (e instanceof HTTPException) throw e
-              throw new HTTPException(400, { message: e instanceof Error ? e.message : "Failed to list files" })
-            }
+            const content = await File.list(path)
+            return c.json(content)
           },
         )
         .get(
@@ -2104,13 +2071,8 @@ export namespace Server {
           ),
           async (c) => {
             const path = c.req.valid("query").path
-            try {
-              const content = await File.read(path)
-              return c.json(content)
-            } catch (e) {
-              if (e instanceof HTTPException) throw e
-              throw new HTTPException(400, { message: e instanceof Error ? e.message : "Failed to read file" })
-            }
+            const content = await File.read(path)
+            return c.json(content)
           },
         )
         .get(
@@ -2869,6 +2831,78 @@ export namespace Server {
             })
           },
         )
+        .get("/frontend/*", async (c) => {
+          const path = c.req.path.replace("/frontend", "")
+          const frontendPath = `/home/will/projects/opencode/packages/opencode/frontend${path}`
+
+          try {
+            const file = Bun.file(frontendPath)
+            const exists = await file.exists()
+
+            if (!exists) {
+              return c.notFound()
+            }
+
+            // Set correct MIME types based on file extension
+            const extension = path.split(".").pop()?.toLowerCase()
+            let contentType = "text/plain"
+
+            switch (extension) {
+              case "tsx":
+              case "jsx":
+              case "ts":
+              case "js":
+              case "mjs":
+                contentType = "application/javascript"
+                break
+              case "css":
+                contentType = "text/css"
+                break
+              case "html":
+                contentType = "text/html"
+                break
+              case "json":
+                contentType = "application/json"
+                break
+              case "svg":
+                contentType = "image/svg+xml"
+                break
+              case "png":
+                contentType = "image/png"
+                break
+              case "jpg":
+              case "jpeg":
+                contentType = "image/jpeg"
+                break
+              case "gif":
+                contentType = "image/gif"
+                break
+              case "woff":
+                contentType = "font/woff"
+                break
+              case "woff2":
+                contentType = "font/woff2"
+                break
+              case "ttf":
+                contentType = "font/ttf"
+                break
+              case "eot":
+                contentType = "application/vnd.ms-fontobject"
+                break
+            }
+
+            return new Response(file, {
+              headers: {
+                "Content-Type": contentType,
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+                "Access-Control-Allow-Headers": "Content-Type, Authorization",
+              },
+            })
+          } catch (error) {
+            return c.notFound()
+          }
+        })
         .all("/*", async (c) => {
           const path = c.req.path
           const response = await proxy(`https://app.opencode.ai${path}`, {
@@ -2880,7 +2914,7 @@ export namespace Server {
           })
           response.headers.set(
             "Content-Security-Policy",
-            "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self'",
+            "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' ws: wss:",
           )
           return response
         }) as unknown as Hono,

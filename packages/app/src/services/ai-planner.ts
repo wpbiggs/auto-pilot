@@ -276,6 +276,8 @@ Constraints: ${request.context.constraints?.join(", ") || "None"}
       id: planId,
       projectName: parsed.projectName,
       originalIdea: request.idea,
+      mode: request.mode,
+      codebaseContext: request.codebaseContext,
       features,
       tasks,
       phases,
