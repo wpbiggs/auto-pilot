@@ -119,47 +119,95 @@ export interface EscalationConfig {
 }
 
 // Default escalation configuration
+// NOTE: modelHierarchy is empty - it will be populated dynamically from available models
 const DEFAULT_ESCALATION_CONFIG: EscalationConfig = {
   enabled: true,
   maxEscalations: 2,
-  modelHierarchy: [
-    "claude-3-5-haiku-20241022",  // Fast tier
-    "gpt-4o-mini",                 // Fast tier
-    "claude-sonnet-4-20250514",    // Standard tier
-    "gpt-4o",                      // Standard tier
-    "claude-opus-4-20250514",      // Premium tier (most powerful)
-  ],
+  modelHierarchy: [], // Populated dynamically from fetchAvailableModels()
   webhookHandlers: [],
   includeFailedOutputInEscalation: true,
 }
 
 // Model tier mapping
 const MODEL_TIERS: Record<string, "premium" | "standard" | "fast"> = {
-  "claude-opus-4-20250514": "premium",
-  "claude-sonnet-4-20250514": "standard",
-  "claude-3-5-haiku-20241022": "fast",
+  // OpenAI models
+  "o3": "premium",
+  "o1": "premium",
   "gpt-4o": "standard",
+  "gpt-4.1": "standard",
   "gpt-4o-mini": "fast",
+  "gpt-4.1-mini": "fast",
+  // GitHub Copilot models
+  "copilot-chat": "standard",
+  // OpenCode Zen models
+  "zen": "standard",
 }
 
 // Model display names
 const MODEL_DISPLAY_NAMES: Record<string, string> = {
-  "claude-opus-4-20250514": "Claude Opus 4",
-  "claude-sonnet-4-20250514": "Claude Sonnet 4",
-  "claude-3-5-haiku-20241022": "Claude Haiku",
+  // OpenAI models
+  "o3": "OpenAI o3",
+  "o1": "OpenAI o1",
   "gpt-4o": "GPT-4o",
+  "gpt-4.1": "GPT-4.1",
   "gpt-4o-mini": "GPT-4o Mini",
+  "gpt-4.1-mini": "GPT-4.1 Mini",
+  // GitHub Copilot models
+  "copilot-chat": "GitHub Copilot",
+  // OpenCode Zen models
+  "zen": "OpenCode Zen",
 }
 
 // Provider display names
 const PROVIDER_NAMES: Record<string, string> = {
-  anthropic: "Anthropic",
   openai: "OpenAI",
+  github: "GitHub Copilot",
+  "github-copilot": "GitHub Copilot",
+  copilot: "GitHub Copilot",
+  zen: "OpenCode Zen",
+  opencode: "OpenCode",
   google: "Google",
 }
 
 // Cached available models from SDK - populated on first fetch
 let cachedAvailableModels: AvailableModel[] | null = null
+
+/**
+ * Get the best available model for a given complexity
+ * Used for internal operations like prompt engineering and planning
+ * Returns model config from cached available models
+ */
+function getBestAvailableModelConfig(complexity: "fast" | "standard" | "premium" = "standard"): { providerID: string; modelID: string } {
+  if (!cachedAvailableModels || cachedAvailableModels.length === 0) {
+    throw new Error(
+      "[getBestAvailableModelConfig] No cached models available. " +
+      "Please call fetchAvailableModels() first to populate the model cache."
+    )
+  }
+  
+  const available = cachedAvailableModels.filter(m => m.available)
+  if (available.length === 0) {
+    throw new Error("[getBestAvailableModelConfig] No available models configured.")
+  }
+  
+  // Find best model for the requested tier
+  const tierModels = available.filter(m => m.tier === complexity)
+  if (tierModels.length > 0) {
+    const model = tierModels[0]!
+    return { providerID: model.providerId, modelID: model.id }
+  }
+  
+  // Fall back to any available model, preferring standard tier
+  const standardModels = available.filter(m => m.tier === "standard")
+  if (standardModels.length > 0) {
+    const model = standardModels[0]!
+    return { providerID: model.providerId, modelID: model.id }
+  }
+  
+  // Use first available model
+  const model = available[0]!
+  return { providerID: model.providerId, modelID: model.id }
+}
 
 /**
  * Get the OpenCode SDK client instance
@@ -175,82 +223,101 @@ function getClient(baseUrl?: string) {
 
 /**
  * Fetch available models from the OpenCode SDK
+ * Throws error if no models are available - never falls back to hardcoded lists
  */
 export async function fetchAvailableModels(baseUrl?: string): Promise<AvailableModel[]> {
-  try {
-    const client = getClient(baseUrl)
-    const response = await client.provider.list()
-    
-    if (!response.data) {
-      console.error("[ExecutionService] No provider data returned")
-      return getDefaultModels()
-    }
-
-    const { all: providers, connected } = response.data
-    const connectedSet = new Set(connected || [])
-    const models: AvailableModel[] = []
-
-    for (const provider of providers) {
-      const isConnected = connectedSet.has(provider.id)
-      
-      for (const [modelId, modelInfo] of Object.entries(provider.models)) {
-        const info = modelInfo as { name?: string; experimental?: boolean; cost?: { input: number; output: number } }
-        models.push({
-          id: modelId,
-          name: MODEL_DISPLAY_NAMES[modelId] || info.name || modelId,
-          providerId: provider.id,
-          providerName: PROVIDER_NAMES[provider.id] || provider.name,
-          tier: MODEL_TIERS[modelId] || "standard",
-          available: isConnected && !info.experimental,
-          cost: info.cost ? {
-            input: info.cost.input,
-            output: info.cost.output,
-          } : undefined,
-        })
-      }
-    }
-
-    // Sort by availability and tier
-    return models.sort((a, b) => {
-      if (a.available !== b.available) return a.available ? -1 : 1
-      const tierOrder = { premium: 0, standard: 1, fast: 2 }
-      return tierOrder[a.tier] - tierOrder[b.tier]
-    })
-  } catch (error) {
-    console.error("[ExecutionService] Failed to fetch models:", error)
-    return getDefaultModels()
+  const client = getClient(baseUrl)
+  const response = await client.provider.list()
+  
+  if (!response.data) {
+    throw new Error("[ExecutionService] No provider data returned from OpenCode SDK")
   }
+
+  const { all: providers, connected } = response.data
+  const connectedSet = new Set(connected || [])
+  const models: AvailableModel[] = []
+
+  for (const provider of providers) {
+    const isConnected = connectedSet.has(provider.id)
+    
+    for (const [modelId, modelInfo] of Object.entries(provider.models)) {
+      const info = modelInfo as { name?: string; experimental?: boolean; cost?: { input: number; output: number } }
+      models.push({
+        id: modelId,
+        name: MODEL_DISPLAY_NAMES[modelId] || info.name || modelId,
+        providerId: provider.id,
+        providerName: PROVIDER_NAMES[provider.id] || provider.name,
+        tier: MODEL_TIERS[modelId] || "standard",
+        available: isConnected && !info.experimental,
+        cost: info.cost ? {
+          input: info.cost.input,
+          output: info.cost.output,
+        } : undefined,
+      })
+    }
+  }
+
+  // Filter to only available models
+  const availableModels = models.filter(m => m.available)
+  
+  if (availableModels.length === 0) {
+    throw new Error("[ExecutionService] No configured models available. Please configure at least one provider in OpenCode.")
+  }
+
+  // Sort by availability and tier
+  return models.sort((a, b) => {
+    if (a.available !== b.available) return a.available ? -1 : 1
+    const tierOrder = { premium: 0, standard: 1, fast: 2 }
+    return tierOrder[a.tier] - tierOrder[b.tier]
+  })
 }
 
 /**
  * Get default models when SDK is not available
+ * Returns empty array - we no longer provide hardcoded fallbacks
+ * The system should always use models from fetchAvailableModels()
  */
 function getDefaultModels(): AvailableModel[] {
-  return [
-    { id: "claude-sonnet-4-20250514", name: "Claude Sonnet 4", providerId: "anthropic", providerName: "Anthropic", tier: "standard", available: true },
-    { id: "claude-opus-4-20250514", name: "Claude Opus 4", providerId: "anthropic", providerName: "Anthropic", tier: "premium", available: true },
-    { id: "claude-3-5-haiku-20241022", name: "Claude Haiku", providerId: "anthropic", providerName: "Anthropic", tier: "fast", available: true },
-    { id: "gpt-4o", name: "GPT-4o", providerId: "openai", providerName: "OpenAI", tier: "standard", available: true },
-    { id: "gpt-4o-mini", name: "GPT-4o Mini", providerId: "openai", providerName: "OpenAI", tier: "fast", available: true },
-  ]
+  console.warn("[ExecutionService] getDefaultModels() called - this should not happen in normal operation")
+  console.warn("[ExecutionService] Please ensure OpenCode SDK is connected and has configured providers")
+  return []
 }
 
 /**
- * Map a simple model name to full model configuration
+ * Map a model ID to full model configuration
+ * Dynamically looks up the provider from cached available models
+ * Throws error if model is not in the available models list
  */
 function getModelConfig(modelName: string): { providerID: string; modelID: string } {
-  const modelMap: Record<string, { providerID: string; modelID: string }> = {
-    "claude-opus": { providerID: "anthropic", modelID: "claude-opus-4-20250514" },
-    "claude-sonnet": { providerID: "anthropic", modelID: "claude-sonnet-4-20250514" },
-    "claude-haiku": { providerID: "anthropic", modelID: "claude-3-5-haiku-20241022" },
-    "gpt-4o": { providerID: "openai", modelID: "gpt-4o" },
-    "gpt-4o-mini": { providerID: "openai", modelID: "gpt-4o-mini" },
-    // Also handle full model IDs
-    "claude-opus-4-20250514": { providerID: "anthropic", modelID: "claude-opus-4-20250514" },
-    "claude-sonnet-4-20250514": { providerID: "anthropic", modelID: "claude-sonnet-4-20250514" },
-    "claude-3-5-haiku-20241022": { providerID: "anthropic", modelID: "claude-3-5-haiku-20241022" },
+  // Look up from cached available models
+  if (cachedAvailableModels) {
+    const model = cachedAvailableModels.find(m => m.id === modelName)
+    if (model) {
+      return { providerID: model.providerId, modelID: model.id }
+    }
   }
-  return modelMap[modelName] || { providerID: "anthropic", modelID: "claude-sonnet-4-20250514" }
+  
+  // If not in cache, try common provider prefixes as heuristic
+  // This handles cases where models haven't been cached yet
+  if (modelName.startsWith("gpt-") || modelName.startsWith("o1") || modelName.startsWith("o3")) {
+    return { providerID: "openai", modelID: modelName }
+  }
+  if (modelName.startsWith("claude")) {
+    return { providerID: "anthropic", modelID: modelName }
+  }
+  if (modelName.startsWith("gemini")) {
+    return { providerID: "google", modelID: modelName }
+  }
+  if (modelName.includes("copilot")) {
+    return { providerID: "github", modelID: modelName }
+  }
+  if (modelName === "zen" || modelName.startsWith("zen-")) {
+    return { providerID: "zen", modelID: modelName }
+  }
+  
+  // Last resort: assume the model ID contains provider info or just use as-is
+  console.warn(`[getModelConfig] Model "${modelName}" not found in available models, using as-is with 'opencode' provider`)
+  return { providerID: "opencode", modelID: modelName }
 }
 
 /**
@@ -368,10 +435,13 @@ Provide ONLY the engineered prompt text that should be sent to the target model.
 
 The prompt should be comprehensive yet focused, guiding the AI to produce excellent, production-ready code.`
 
+    // Use the best available standard-tier model for prompt engineering
+    const modelConfig = getBestAvailableModelConfig("standard")
+    
     const response = await client.session.prompt({
       path: { id: sessionId },
       body: {
-        model: { providerID: "anthropic", modelID: "claude-sonnet-4-20250514" },
+        model: modelConfig,
         parts: [{ type: "text" as const, text: engineeringPrompt }]
       }
     })
@@ -679,26 +749,39 @@ Remember: You are the escalation expert. The previous attempt failed - you MUST 
 
 /**
  * Get the next model in the escalation hierarchy
+ * Dynamically builds hierarchy from available models if not provided
  */
 function getEscalationModel(
   currentModel: string,
   escalationConfig: EscalationConfig
 ): string | null {
-  const hierarchy = escalationConfig.modelHierarchy
+  let hierarchy = escalationConfig.modelHierarchy
+  
+  // If hierarchy is empty, build it dynamically from cached models
+  if (hierarchy.length === 0 && cachedAvailableModels) {
+    const available = cachedAvailableModels.filter(m => m.available)
+    // Build hierarchy: fast -> standard -> premium
+    const fastModels = available.filter(m => m.tier === "fast").map(m => m.id)
+    const standardModels = available.filter(m => m.tier === "standard").map(m => m.id)
+    const premiumModels = available.filter(m => m.tier === "premium").map(m => m.id)
+    hierarchy = [...fastModels, ...standardModels, ...premiumModels]
+  }
+  
+  if (hierarchy.length === 0) {
+    console.warn("[getEscalationModel] No models in escalation hierarchy")
+    return null
+  }
+  
   const currentIndex = hierarchy.findIndex(m => 
     m === currentModel || 
     currentModel.includes(m) || 
     m.includes(currentModel)
   )
   
-  // If not found or already at highest tier, return the highest model
+  // If not found, return the first model after the current tier
   if (currentIndex === -1) {
-    // Start from the model after standard tier
-    const standardIndex = hierarchy.findIndex(m => m.includes("sonnet") || m === "gpt-4o")
-    const nextIndex = standardIndex + 1
-    if (nextIndex < hierarchy.length) {
-      return hierarchy[nextIndex] ?? null
-    }
+    // Find a higher-tier model than whatever the current model might be
+    // Default to returning the highest tier model available
     return hierarchy[hierarchy.length - 1] ?? null
   }
   
@@ -1410,24 +1493,23 @@ export async function checkSDKConnection(baseUrl?: string): Promise<boolean> {
 
 /**
  * Get cached available models or fetch from SDK
+ * Throws error if models cannot be fetched - never falls back to hardcoded lists
  */
 export async function getAvailableModelsFromSDK(baseUrl?: string): Promise<AvailableModel[]> {
   if (cachedAvailableModels) {
     return cachedAvailableModels
   }
   
-  try {
-    const models = await fetchAvailableModels(baseUrl)
-    const availableOnly = models.filter(m => m.available)
-    if (availableOnly.length > 0) {
-      cachedAvailableModels = models
-      console.log(`[SDK] Cached ${availableOnly.length} available models:`, availableOnly.map(m => m.id))
-    }
-    return models
-  } catch (error) {
-    console.warn("[SDK] Failed to fetch models, using defaults")
-    return getDefaultModels()
+  const models = await fetchAvailableModels(baseUrl)
+  const availableOnly = models.filter(m => m.available)
+  
+  if (availableOnly.length === 0) {
+    throw new Error("[getAvailableModelsFromSDK] No configured models available. Please configure at least one provider in OpenCode.")
   }
+  
+  cachedAvailableModels = models
+  console.log(`[SDK] Cached ${availableOnly.length} available models:`, availableOnly.map(m => m.id))
+  return models
 }
 
 /**
@@ -1499,19 +1581,19 @@ function scoreComplexity(description: string): { complexity: string; estimateMin
 /**
  * Assign optimal model based on task complexity and available models
  * Dynamically selects from actually available/configured models
+ * Throws error if no models are available - never falls back to hardcoded lists
  */
 function assignOptimalModel(complexity: string, availableModels?: AvailableModel[]): string {
   const models = availableModels || cachedAvailableModels || []
   const available = models.filter(m => m.available)
   
-  // If no available models, fall back to defaults
+  // If no available models, throw error - don't use hardcoded fallbacks
   if (available.length === 0) {
-    switch (complexity) {
-      case "complex": return "claude-sonnet-4-20250514"
-      case "medium": return "claude-sonnet-4-20250514"
-      case "simple": return "claude-3-5-haiku-20241022"
-      default: return "claude-sonnet-4-20250514"
-    }
+    throw new Error(
+      "[assignOptimalModel] No models available. " +
+      "Please connect to OpenCode SDK and ensure at least one provider is configured. " +
+      "Run fetchAvailableModels() first to populate the model cache."
+    )
   }
   
   // Find best model for complexity from available models
@@ -1736,11 +1818,14 @@ Provide the plan in the following format:
 
 Generate a realistic and actionable plan that an AI coding assistant can execute.`
 
+  // Use the best available standard-tier model for plan generation
+  const modelConfig = getBestAvailableModelConfig("standard")
+  
   // Call the SDK to generate the plan
   const response = await client.session.prompt({
     path: { id: sessionId },
     body: {
-      model: { providerID: "anthropic", modelID: "claude-sonnet-4-20250514" },
+      model: modelConfig,
       parts: [{ type: "text" as const, text: planningPrompt }]
     }
   })
