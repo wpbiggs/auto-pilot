@@ -157,6 +157,14 @@ export function LiveExecutionStage({ plan, onComplete, onBack }) {
   const [executor, setExecutor] = useState(null)
   const [sdkConnected, setSdkConnected] = useState(null) // null = checking, true/false = result
   const [escalationCount, setEscalationCount] = useState(0)
+  
+  // Interactive execution state
+  const [pendingQuestion, setPendingQuestion] = useState(null)
+  const [questionAnswer, setQuestionAnswer] = useState("")
+  const [pendingApproval, setPendingApproval] = useState(null)
+  const [supervisorStatus, setSupervisorStatus] = useState(null)
+  const [workspaceViolations, setWorkspaceViolations] = useState([])
+  const [waitingForInput, setWaitingForInput] = useState(false)
 
   const addLog = useCallback((type, message) => {
     setLogs(prev => [...prev, {
@@ -186,6 +194,12 @@ export function LiveExecutionStage({ plan, onComplete, onBack }) {
     }
   }, [addLog])
 
+  // Handle workspace violation callback
+  const handleWorkspaceViolation = useCallback((violation) => {
+    setWorkspaceViolations(prev => [...prev, violation])
+    addLog("error", `🚨 BLOCKED: ${violation.attemptedPath} (outside project: ${violation.allowedWorkspace})`)
+  }, [addLog])
+
   useEffect(() => {
     // Check SDK connection and start execution
     const startExecution = async () => {
@@ -196,7 +210,7 @@ export function LiveExecutionStage({ plan, onComplete, onBack }) {
       
       if (isConnected) {
         addLog("success", "Connected to OpenCode SDK - using real AI agents")
-        addLog("info", "🛡️ Failure escalation enabled - tasks will auto-escalate to stronger models on failure")
+        addLog("info", "🛡️ Interactive execution enabled - agents will be supervised and isolated")
       } else {
         addLog("error", "SDK not available - cannot execute tasks")
         addLog("warning", "Please start the OpenCode server to enable execution")
@@ -209,14 +223,44 @@ export function LiveExecutionStage({ plan, onComplete, onBack }) {
         if (event) {
           if (event.type === "log" && event.logType && event.message) {
             addLog(event.logType, event.message)
-          } else if (event.type === "task_started") {
-            // Log already added by execution service
-          } else if (event.type === "task_completed") {
-            // Log already added by execution service
-          } else if (event.type === "task_failed") {
-            // Log already added by execution service
-          } else if (event.type === "execution_completed") {
-            // Log already added by execution service
+          } else if (event.type === "agent_question") {
+            // Agent is asking a question
+            setPendingQuestion({
+              taskId: event.taskId,
+              question: event.question,
+              context: event.questionContext
+            })
+            setWaitingForInput(true)
+            addLog("warning", `🤔 Agent needs input: ${event.question?.substring(0, 100)}...`)
+          } else if (event.type === "supervisor_verification") {
+            // Supervisor verification status update
+            setSupervisorStatus({
+              taskId: event.taskId,
+              status: event.verificationStatus,
+              reason: event.verificationReason
+            })
+            if (event.verificationStatus === "verified") {
+              addLog("success", `✅ Supervisor verified: ${event.verificationReason || "Task complete"}`)
+            } else if (event.verificationStatus === "rejected") {
+              addLog("warning", `⚠️ Supervisor rejected: ${event.verificationReason}`)
+            }
+          } else if (event.type === "human_approval_required") {
+            // Human approval needed
+            setPendingApproval({
+              taskId: event.taskId,
+              type: event.approvalType,
+              details: event.approvalDetails
+            })
+            setWaitingForInput(true)
+            addLog("warning", `👤 Human approval needed: ${event.approvalType}`)
+          } else if (event.type === "workspace_violation") {
+            // Workspace boundary violation
+            setWorkspaceViolations(prev => [...prev, {
+              taskId: event.taskId,
+              attemptedPath: event.violatedPath,
+              allowedWorkspace: event.allowedWorkspace
+            }])
+            addLog("error", `🚨 VIOLATION: Blocked access to ${event.violatedPath}`)
           }
         }
       }
@@ -230,10 +274,20 @@ export function LiveExecutionStage({ plan, onComplete, onBack }) {
               includeFailedOutputInEscalation: true,
             },
             onEscalation: handleEscalation,
+            // Interactive execution
+            enableInteractiveMode: true,
+            enableSupervisorVerification: true,
+            enableWorkspaceEnforcement: true,
+            onWorkspaceViolation: handleWorkspaceViolation,
           })
         : createOfflineExecutionService(plan, handleUpdate)
       
       setExecutor(exec)
+      
+      // Log project directory
+      if (exec.projectDirectory) {
+        addLog("info", `📁 Project directory: ${exec.projectDirectory}`)
+      }
     }
 
     startExecution()
@@ -369,6 +423,116 @@ export function LiveExecutionStage({ plan, onComplete, onBack }) {
                 : "SDK Not Connected - Start the OpenCode server to enable execution"
               }
             </span>
+          </div>
+        )}
+
+        {/* Project Directory Info */}
+        {executor?.projectDirectory && (
+          <div className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm bg-blue-500/10 border border-blue-500/30 text-blue-400">
+            <span>📁</span>
+            <span>Project Directory: <code className="bg-blue-500/20 px-2 py-0.5 rounded">{executor.projectDirectory}</code></span>
+          </div>
+        )}
+
+        {/* Workspace Violations Warning */}
+        {workspaceViolations.length > 0 && (
+          <div className="p-4 rounded-xl bg-red-500/10 border-2 border-red-500/50">
+            <h3 className="text-red-400 font-semibold flex items-center gap-2 mb-2">
+              🚨 Project Boundary Violations Blocked ({workspaceViolations.length})
+            </h3>
+            <div className="space-y-1 text-sm text-red-300 max-h-32 overflow-y-auto">
+              {workspaceViolations.map((v, i) => (
+                <div key={i} className="font-mono">
+                  ❌ {v.attemptedPath}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Agent Question Prompt */}
+        {pendingQuestion && (
+          <div className="p-4 rounded-xl bg-yellow-500/10 border-2 border-yellow-500/50">
+            <h3 className="text-yellow-400 font-semibold flex items-center gap-2 mb-2">
+              🤔 Agent needs clarification
+            </h3>
+            <p className="text-white mb-3">{pendingQuestion.question}</p>
+            {pendingQuestion.context && (
+              <details className="text-sm text-gray-400 mb-3">
+                <summary className="cursor-pointer hover:text-gray-300">Show context</summary>
+                <pre className="mt-2 p-2 bg-gray-800 rounded text-xs overflow-x-auto">{pendingQuestion.context}</pre>
+              </details>
+            )}
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={questionAnswer}
+                onChange={(e) => setQuestionAnswer(e.target.value)}
+                placeholder="Type your answer..."
+                className="flex-1 px-3 py-2 rounded-lg bg-gray-800 text-white border border-gray-700 focus:border-yellow-500 focus:outline-none"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && questionAnswer.trim()) {
+                    executor?.answerQuestion?.(pendingQuestion.id || `q-${pendingQuestion.taskId}`, questionAnswer)
+                    setQuestionAnswer("")
+                    setPendingQuestion(null)
+                    setWaitingForInput(false)
+                  }
+                }}
+              />
+              <button
+                onClick={() => {
+                  if (questionAnswer.trim()) {
+                    executor?.answerQuestion?.(pendingQuestion.id || `q-${pendingQuestion.taskId}`, questionAnswer)
+                    setQuestionAnswer("")
+                    setPendingQuestion(null)
+                    setWaitingForInput(false)
+                  }
+                }}
+                className="px-4 py-2 rounded-lg bg-yellow-600 text-white hover:bg-yellow-700 transition-colors"
+              >
+                Submit Answer
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Human Approval Prompt */}
+        {pendingApproval && (
+          <div className="p-4 rounded-xl bg-purple-500/10 border-2 border-purple-500/50">
+            <h3 className="text-purple-400 font-semibold flex items-center gap-2 mb-2">
+              👤 Human approval required
+            </h3>
+            <p className="text-white mb-3">{pendingApproval.details}</p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => {
+                  executor?.approveTask?.(pendingApproval.taskId)
+                  setPendingApproval(null)
+                  setWaitingForInput(false)
+                }}
+                className="px-4 py-2 rounded-lg bg-green-600 text-white hover:bg-green-700 transition-colors"
+              >
+                ✓ Approve
+              </button>
+              <button
+                onClick={() => {
+                  executor?.rejectTask?.(pendingApproval.taskId)
+                  setPendingApproval(null)
+                  setWaitingForInput(false)
+                }}
+                className="px-4 py-2 rounded-lg bg-red-600 text-white hover:bg-red-700 transition-colors"
+              >
+                ✗ Reject
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Supervisor Verification Status */}
+        {supervisorStatus && supervisorStatus.status === "pending" && (
+          <div className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm bg-blue-500/10 border border-blue-500/30 text-blue-400">
+            <span className="animate-spin">🔍</span>
+            <span>Supervisor verifying task completion...</span>
           </div>
         )}
 

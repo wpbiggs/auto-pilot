@@ -69,6 +69,10 @@ export interface ExecutionEvent {
     | "task_failed" 
     | "execution_completed"
     | "log"
+    | "agent_question"
+    | "supervisor_verification"
+    | "human_approval_required"
+    | "workspace_violation"
   taskId?: string
   message?: string
   logType?: "info" | "success" | "error" | "warning"
@@ -76,7 +80,62 @@ export interface ExecutionEvent {
   error?: string
   tokensUsed?: number
   cost?: number
+  // Agent question data
+  question?: string
+  questionContext?: string
+  // Supervisor verification data
+  verificationStatus?: "pending" | "verified" | "rejected"
+  verificationReason?: string
+  // Human approval data
+  approvalType?: "task_completion" | "file_modification" | "external_access"
+  approvalDetails?: string
+  // Workspace violation data
+  violatedPath?: string
+  allowedWorkspace?: string
 }
+
+// Interactive execution state types
+export interface AgentQuestion {
+  id: string
+  taskId: string
+  question: string
+  context: string
+  timestamp: number
+  answered: boolean
+  answer?: string
+}
+
+export interface SupervisorVerification {
+  taskId: string
+  status: "pending" | "verified" | "rejected"
+  reason?: string
+  verifiedAt?: number
+  modelUsed: string
+}
+
+export interface HumanApprovalRequest {
+  id: string
+  taskId: string
+  type: "task_completion" | "file_modification" | "external_access"
+  details: string
+  timestamp: number
+  approved: boolean | null
+  respondedAt?: number
+}
+
+export interface WorkspaceViolation {
+  taskId: string
+  attemptedPath: string
+  allowedWorkspace: string
+  operation: "read" | "write" | "delete" | "execute"
+  timestamp: number
+  blocked: boolean
+}
+
+// Interactive execution callbacks
+export type AgentQuestionCallback = (question: AgentQuestion) => Promise<string>
+export type HumanApprovalCallback = (request: HumanApprovalRequest) => Promise<boolean>
+export type WorkspaceViolationCallback = (violation: WorkspaceViolation) => void
 
 export interface AvailableModel {
   id: string
@@ -527,18 +586,12 @@ function getModelConfig(modelName: string): { providerID: string; modelID: strin
 }
 
 /**
- * Critical requirements appended to all prompts for production-ready code
+ * Critical requirements template - appended to all prompts for production-ready code
+ * Note: This is a template. Use buildCriticalRequirements(projectDirectory) to get
+ * the full requirements with project directory enforcement.
  */
-const CRITICAL_REQUIREMENTS = `
+const CRITICAL_REQUIREMENTS_TEMPLATE = `
 ## CRITICAL REQUIREMENTS - READ CAREFULLY
-
-### 🛡️ WORKSPACE BOUNDARY - ABSOLUTE SECURITY REQUIREMENT:
-- **ONLY modify files within the current project directory**
-- **NEVER navigate to parent directories (../) outside the project**
-- **NEVER modify files in /home, /etc, /usr, or any system directories**
-- **NEVER delete files outside the current project**
-- **If you're unsure if a path is within the project, DO NOT modify it**
-- **All file operations must use relative paths from project root**
 
 ### ⚠️ ABSOLUTE REQUIREMENTS (MUST FOLLOW):
 1. **COMPLETE IMPLEMENTATION ONLY** - Every function, method, and component MUST be fully implemented
@@ -557,9 +610,10 @@ const CRITICAL_REQUIREMENTS = `
 - ❌ Empty function bodies
 - ❌ Comments like "implement later", "add logic here", "finish this"
 - ❌ Returning mock/fake data when real implementation is needed
-- ❌ Modifying ANY file outside the current project directory
+- ❌ Modifying ANY file outside the designated project directory
 - ❌ Using rm -rf or mass delete operations
-- ❌ Navigating to parent directories beyond the project root
+- ❌ Navigating to parent directories beyond your project root
+- ❌ Accessing /workspaces/auto-pilot/packages/ or any SDK code
 
 ### ✅ REQUIRED IN ALL CODE:
 1. **Complete Error Handling** - Handle all error cases with proper try/catch, error types, and recovery
@@ -588,6 +642,596 @@ Provide the complete, working implementation with:
 - Ready to copy-paste and run immediately
 
 Remember: If you cannot fully implement something, explain why and provide the closest complete alternative. NEVER leave placeholder code.`
+
+/**
+ * Build CRITICAL_REQUIREMENTS with dynamic project directory
+ * This ensures agents only operate within their isolated project sandbox
+ */
+function buildCriticalRequirements(projectDirectory: string): string {
+  return `${CRITICAL_REQUIREMENTS_TEMPLATE}
+
+## 🔒 YOUR PROJECT DIRECTORY (ONLY WORK HERE)
+
+**Your project directory is: \`${projectDirectory}\`**
+
+### ABSOLUTE RULES:
+1. **ALL file operations MUST be within \`${projectDirectory}\`**
+2. **NEVER access parent directories or sibling folders**
+3. **NEVER modify the OpenCode SDK or any system files**
+4. **Use relative paths from your project root: \`${projectDirectory}\`**
+5. **If a path doesn't start with \`${projectDirectory}\`, DO NOT touch it**
+
+### Example Valid Paths:
+- \`${projectDirectory}/src/index.ts\` ✅
+- \`${projectDirectory}/package.json\` ✅
+- \`./src/components/Button.tsx\` ✅ (relative to project root)
+
+### Example BLOCKED Paths:
+- Any path containing \`../\` ❌ BLOCKED
+- Any path outside \`${projectDirectory}\` ❌ BLOCKED
+- System paths like \`/home\`, \`/etc\`, \`/usr\` ❌ BLOCKED
+
+**VIOLATION OF THESE RULES WILL CAUSE IMMEDIATE TASK FAILURE.**`
+}
+
+// ============================================================================
+// PROJECT DIRECTORY MANAGEMENT
+// ============================================================================
+
+/**
+ * Get the base path for all auto-pilot projects
+ * Uses a relative path from the current working directory for portability
+ */
+function getProjectsBasePath(): string {
+  // Use environment variable if set, otherwise use relative path
+  if (typeof process !== 'undefined' && process.env?.OPENCODE_PROJECTS_PATH) {
+    return process.env.OPENCODE_PROJECTS_PATH
+  }
+  // Default to ./projects relative to cwd (works across different file systems)
+  return "./projects"
+}
+
+/**
+ * Generate a unique project directory path
+ * Format: ./projects/{sanitized-name}-{timestamp}/
+ */
+export function generateProjectDirectory(projectName: string): string {
+  const basePath = getProjectsBasePath()
+  
+  // Sanitize project name: lowercase, replace spaces with hyphens, remove special chars
+  const sanitized = projectName
+    .toLowerCase()
+    .replace(/\s+/g, "-")
+    .replace(/[^a-z0-9-]/g, "")
+    .substring(0, 50) // Limit length
+    || "project" // Fallback if empty
+  
+  const timestamp = Date.now()
+  return `${basePath}/${sanitized}-${timestamp}`
+}
+
+/**
+ * Validate that a project directory path is valid
+ * Checks that it's within the projects base path and doesn't contain path traversal
+ */
+export function isValidProjectDirectory(path: string): boolean {
+  const basePath = getProjectsBasePath()
+  // Check it starts with base path (or resolved base path) and no path traversal
+  return (path.startsWith(basePath) || path.startsWith("./projects") || path.includes("/projects/")) && 
+         path.length > basePath.length + 1 &&
+         !path.includes("..")
+}
+
+// ============================================================================
+// WORKSPACE BOUNDARY ENFORCEMENT
+// ============================================================================
+
+/**
+ * Get the fallback workspace root (uses relative projects path)
+ */
+function getFallbackWorkspaceRoot(): string {
+  return getProjectsBasePath()
+}
+
+/**
+ * Patterns that indicate potentially dangerous path traversal
+ */
+const DANGEROUS_PATH_PATTERNS = [
+  /\.\.\//g,                          // Parent directory traversal
+  /^\/home\//,                         // Home directories
+  /^\/etc\//,                          // System config
+  /^\/usr\//,                          // System binaries
+  /^\/var\//,                          // System data
+  /^\/tmp\//,                          // Temp files (could be shared)
+  /^\/root\//,                         // Root home
+  /^~\//,                              // Home shorthand
+  /^\$HOME/,                           // Home env var
+  /^\/opt\//,                          // Optional packages
+  /^\/bin\//,                          // System binaries
+  /^\/sbin\//,                         // System admin binaries
+]
+
+/**
+ * File extensions that should never be modified outside workspace
+ */
+const PROTECTED_FILE_PATTERNS = [
+  /\.ssh\//,                           // SSH keys
+  /\.gnupg\//,                         // GPG keys
+  /\.config\//,                        // User config (outside workspace)
+  /\.bashrc$/,                         // Shell config
+  /\.zshrc$/,                          // Shell config
+  /\.profile$/,                        // Shell profile
+  /\.env$/,                            // Environment files (must be in workspace)
+  /package-lock\.json$/,               // npm lock (only if outside workspace)
+  /yarn\.lock$/,                       // yarn lock (only if outside workspace)
+]
+
+/**
+ * Validate that a path is within the allowed project directory
+ * CRITICAL SECURITY FUNCTION - Returns detailed validation result
+ * 
+ * @param path - The path to validate (can be relative or absolute)
+ * @param projectDirectory - The allowed project directory (e.g., ./projects/my-app-123456)
+ * @param operation - The type of operation being performed
+ * @returns Validation result with details
+ */
+export function validateWorkspacePath(
+  path: string, 
+  projectDirectory: string = getFallbackWorkspaceRoot(),
+  operation: "read" | "write" | "delete" | "execute" = "write"
+): { 
+  valid: boolean
+  normalizedPath: string
+  violation?: WorkspaceViolation
+  reason?: string
+} {
+  const basePath = getProjectsBasePath()
+  // Ensure project directory is valid (starts with base path or is a valid relative projects path)
+  const allowedWorkspace = projectDirectory && isValidProjectDirectory(projectDirectory)
+    ? projectDirectory 
+    : getFallbackWorkspaceRoot()
+
+  // Handle empty or null paths
+  if (!path || path.trim() === "") {
+    return {
+      valid: false,
+      normalizedPath: "",
+      reason: "Path is empty or undefined"
+    }
+  }
+
+  // Normalize the path - resolve any relative components
+  let normalizedPath = path.trim()
+  
+  // If path starts with relative indicators, resolve against project directory
+  if (normalizedPath.startsWith("./")) {
+    normalizedPath = `${allowedWorkspace}/${normalizedPath.slice(2)}`
+  } else if (normalizedPath.startsWith("../")) {
+    // CRITICAL: Block any parent traversal
+    return {
+      valid: false,
+      normalizedPath: path,
+      violation: {
+        taskId: "",
+        attemptedPath: path,
+        allowedWorkspace: allowedWorkspace,
+        operation,
+        timestamp: Date.now(),
+        blocked: true
+      },
+      reason: `Parent directory traversal blocked: ${path}`
+    }
+  } else if (!normalizedPath.startsWith("/")) {
+    // Relative path - assume it's relative to project directory
+    normalizedPath = `${allowedWorkspace}/${normalizedPath}`
+  }
+
+  // Resolve any remaining .. or . in the path
+  const segments = normalizedPath.split("/")
+  const resolvedSegments: string[] = []
+  
+  for (const segment of segments) {
+    if (segment === "." || segment === "") {
+      continue
+    } else if (segment === "..") {
+      // Pop the last segment (go up one directory)
+      resolvedSegments.pop()
+    } else {
+      resolvedSegments.push(segment)
+    }
+  }
+  
+  normalizedPath = "/" + resolvedSegments.join("/")
+
+  // Check if the normalized path is within the allowed project directory
+  if (!normalizedPath.startsWith(allowedWorkspace)) {
+    return {
+      valid: false,
+      normalizedPath,
+      violation: {
+        taskId: "",
+        attemptedPath: path,
+        allowedWorkspace: allowedWorkspace,
+        operation,
+        timestamp: Date.now(),
+        blocked: true
+      },
+      reason: `Path "${normalizedPath}" is outside allowed project directory "${allowedWorkspace}"`
+    }
+  }
+
+  // Check for dangerous patterns
+  for (const pattern of DANGEROUS_PATH_PATTERNS) {
+    if (pattern.test(path)) {
+      return {
+        valid: false,
+        normalizedPath,
+        violation: {
+          taskId: "",
+          attemptedPath: path,
+          allowedWorkspace: allowedWorkspace,
+          operation,
+          timestamp: Date.now(),
+          blocked: true
+        },
+        reason: `Path contains dangerous pattern: ${path}`
+      }
+    }
+  }
+
+  // For write/delete operations on protected files, extra validation
+  if (operation === "write" || operation === "delete") {
+    for (const pattern of PROTECTED_FILE_PATTERNS) {
+      // Only block if path is outside project directory AND matches protected pattern
+      if (pattern.test(path) && !normalizedPath.startsWith(allowedWorkspace)) {
+        return {
+          valid: false,
+          normalizedPath,
+          violation: {
+            taskId: "",
+            attemptedPath: path,
+            allowedWorkspace: allowedWorkspace,
+            operation,
+            timestamp: Date.now(),
+            blocked: true
+          },
+          reason: `Cannot ${operation} protected file: ${path}`
+        }
+      }
+    }
+  }
+
+  return {
+    valid: true,
+    normalizedPath
+  }
+}
+
+/**
+ * Scan agent output for file paths and validate them
+ * Returns all detected file paths with their validation status
+ * 
+ * @param output - The agent's output text to scan
+ * @param taskId - The task ID for tracking
+ * @param projectDirectory - The allowed project directory
+ */
+export function scanOutputForPathViolations(
+  output: string, 
+  taskId: string,
+  projectDirectory: string = getFallbackWorkspaceRoot()
+): WorkspaceViolation[] {
+  const violations: WorkspaceViolation[] = []
+  
+  // Patterns to detect file paths in agent output
+  const pathPatterns = [
+    // Absolute paths
+    /(?:^|\s|['"`])(\/[\w./-]+)(?:['"`]|\s|$)/gm,
+    // Common file operations
+    /(?:create|write|edit|modify|delete|remove|touch|mkdir|rm|mv|cp)\s+['"`]?([\/\w./-]+)['"`]?/gi,
+    // Open/read operations
+    /(?:open|read|cat|less|more|head|tail)\s+['"`]?([\/\w./-]+)['"`]?/gi,
+    // File write redirects
+    />\s*['"`]?([\/\w./-]+)['"`]?/gm,
+    // SDK file operations
+    /(?:filePath|path|file)[\s:=]+['"`]([\/\w./-]+)['"`]/gi,
+  ]
+  
+  const detectedPaths = new Set<string>()
+  
+  for (const pattern of pathPatterns) {
+    let match
+    while ((match = pattern.exec(output)) !== null) {
+      const path = match[1]
+      if (path && path.length > 2 && path.includes("/")) {
+        detectedPaths.add(path)
+      }
+    }
+  }
+  
+  // Validate each detected path against the project directory
+  for (const path of detectedPaths) {
+    const validation = validateWorkspacePath(path, projectDirectory, "write")
+    if (!validation.valid && validation.violation) {
+      violations.push({
+        ...validation.violation,
+        taskId
+      })
+    }
+  }
+  
+  return violations
+}
+
+// ============================================================================
+// AGENT QUESTION DETECTION
+// ============================================================================
+
+/**
+ * Patterns that indicate the agent is asking a question
+ */
+const QUESTION_PATTERNS = [
+  // Direct questions
+  /(?:^|\n)\s*(?:Question|Clarification needed|Before I proceed|I need to know|Can you (?:please )?(?:clarify|confirm|specify)|Could you (?:please )?(?:clarify|confirm|specify)|Would you (?:like|prefer)|Should I|Do you want me to|Which (?:option|approach|method)|What (?:should|would you))[:?\s]/i,
+  // Question marks with context
+  /(?:^|\n)\s*[A-Z][^.!?]*\?(?:\s|$)/m,
+  // Explicit clarification requests
+  /(?:need (?:your |)(?:input|decision|confirmation)|awaiting (?:your |)(?:response|input)|please (?:let me know|respond|confirm))/i,
+  // Multiple choice presentations
+  /(?:Option [A-D1-4]|Choice [1-4]|Alternative [1-4])[:.\s]/i,
+  // Decision points
+  /(?:There are (?:multiple|several|two|three) (?:options|approaches|ways)|I can (?:either|do one of)|Please choose|Select one of)/i,
+]
+
+/**
+ * Context phrases that confirm something is a question
+ */
+const QUESTION_CONTEXT_PHRASES = [
+  "before i can proceed",
+  "before proceeding",
+  "need to clarify",
+  "need clarification",
+  "not sure which",
+  "unclear whether",
+  "please specify",
+  "let me know",
+  "waiting for",
+  "depends on your",
+  "your preference",
+  "your decision",
+]
+
+/**
+ * Detect if agent output contains a question requiring user input
+ * Returns null if no question detected, or the question details if found
+ */
+export function detectAgentQuestion(
+  output: string, 
+  taskId: string
+): AgentQuestion | null {
+  if (!output || output.length < 20) {
+    return null
+  }
+  
+  const lowerOutput = output.toLowerCase()
+  
+  // Check for explicit question patterns
+  let questionMatch: RegExpMatchArray | null = null
+  for (const pattern of QUESTION_PATTERNS) {
+    questionMatch = output.match(pattern)
+    if (questionMatch) break
+  }
+  
+  // Check for context phrases that indicate a question
+  const hasQuestionContext = QUESTION_CONTEXT_PHRASES.some(phrase => 
+    lowerOutput.includes(phrase)
+  )
+  
+  // Detect if this looks like implementation vs a question
+  // Implementation typically has code blocks, file creates, etc.
+  const hasCodeBlocks = output.includes("```")
+  const hasFileOperations = /(?:created|wrote|updated|modified)\s+(?:file|directory)/i.test(output)
+  const looksLikeImplementation = hasCodeBlocks && hasFileOperations
+  
+  // If it looks like implementation with code, it's probably not just a question
+  if (looksLikeImplementation && !hasQuestionContext) {
+    return null
+  }
+  
+  // If we found a question pattern or question context
+  if (questionMatch || hasQuestionContext) {
+    // Extract the question portion
+    let question = ""
+    let context = ""
+    
+    if (questionMatch) {
+      // Get the sentence containing the question
+      const matchIndex = questionMatch.index || 0
+      const startOfSentence = output.lastIndexOf("\n", matchIndex) + 1
+      const endOfSentence = output.indexOf("\n", matchIndex + questionMatch[0].length)
+      question = output.slice(startOfSentence, endOfSentence > -1 ? endOfSentence : undefined).trim()
+      
+      // Get surrounding context (up to 500 chars)
+      const contextStart = Math.max(0, matchIndex - 250)
+      const contextEnd = Math.min(output.length, matchIndex + 250)
+      context = output.slice(contextStart, contextEnd)
+    } else {
+      // Use the first part of output as question
+      question = output.slice(0, Math.min(500, output.indexOf("\n\n") || 500)).trim()
+      context = output.slice(0, Math.min(1000, output.length))
+    }
+    
+    return {
+      id: `q-${taskId}-${Date.now()}`,
+      taskId,
+      question,
+      context,
+      timestamp: Date.now(),
+      answered: false
+    }
+  }
+  
+  return null
+}
+
+// ============================================================================
+// SUPERVISOR VERIFICATION (Claude Opus)
+// ============================================================================
+
+/**
+ * Supervisor verification prompt template
+ */
+const SUPERVISOR_VERIFICATION_PROMPT = `You are a senior code review supervisor. Your job is to verify if a task has been completed correctly.
+
+## Task Information
+**Task Name:** {TASK_NAME}
+**Task Description:** {TASK_DESCRIPTION}
+
+## Agent Output
+\`\`\`
+{AGENT_OUTPUT}
+\`\`\`
+
+## Verification Criteria
+1. **Completeness**: Is the task fully implemented with no TODOs or placeholders?
+2. **Correctness**: Does the implementation match the task requirements?
+3. **Quality**: Is the code production-ready with proper error handling?
+4. **Security**: Are there any security concerns or workspace boundary violations?
+
+## Your Task
+Analyze the agent's output and determine if the task is complete.
+
+Respond ONLY in this JSON format:
+{
+  "verified": true/false,
+  "reason": "Brief explanation of your decision",
+  "concerns": ["list", "of", "any", "concerns"],
+  "suggestions": ["list", "of", "improvements", "if any"]
+}
+
+Be strict but fair. If the core requirements are met, mark as verified even if minor improvements could be made.`
+
+/**
+ * Verify task completion using a supervisory model (Claude Opus)
+ */
+export async function verifySupervisorCompletion(
+  task: ExecutionTask,
+  agentOutput: string,
+  baseUrl?: string
+): Promise<SupervisorVerification> {
+  const client = getClient(baseUrl)
+  
+  try {
+    // Create a verification session
+    const sessionResult = await client.session.create({
+      body: {
+        title: `Verify: ${task.name.substring(0, 40)}`
+      }
+    })
+
+    if (!sessionResult.data?.id) {
+      console.warn("[Supervisor] Failed to create verification session")
+      // Default to verified if we can't check
+      return {
+        taskId: task.id,
+        status: "verified",
+        reason: "Verification service unavailable - defaulting to verified",
+        verifiedAt: Date.now(),
+        modelUsed: "fallback"
+      }
+    }
+
+    const sessionId = sessionResult.data.id
+
+    // Build the verification prompt
+    const prompt = SUPERVISOR_VERIFICATION_PROMPT
+      .replace("{TASK_NAME}", task.name)
+      .replace("{TASK_DESCRIPTION}", task.description)
+      .replace("{AGENT_OUTPUT}", agentOutput.substring(0, 4000)) // Limit output size
+
+    // Use Claude Opus for verification (or best available premium model)
+    let modelConfig: { providerID: string; modelID: string }
+    
+    if (cachedAvailableModels) {
+      const opusModel = cachedAvailableModels.find(m => 
+        m.id.includes("opus") && m.available
+      )
+      if (opusModel) {
+        modelConfig = { providerID: opusModel.providerId, modelID: opusModel.id }
+      } else {
+        // Fall back to any premium model
+        const premiumModel = cachedAvailableModels.find(m => 
+          m.tier === "premium" && m.available
+        )
+        if (premiumModel) {
+          modelConfig = { providerID: premiumModel.providerId, modelID: premiumModel.id }
+        } else {
+          // Use best available
+          modelConfig = await getBestAvailableModelConfig("premium")
+        }
+      }
+    } else {
+      modelConfig = await getBestAvailableModelConfig("premium")
+    }
+
+    console.log(`[Supervisor] Verifying task ${task.id} with model:`, modelConfig)
+
+    // Call the supervisor model
+    const response = await client.session.prompt({
+      path: { id: sessionId },
+      body: {
+        model: modelConfig,
+        parts: [{ type: "text" as const, text: prompt }]
+      }
+    })
+
+    const responseText = extractResponseText(response)
+    
+    // Parse the JSON response
+    try {
+      // Find JSON in response
+      const jsonMatch = responseText.match(/\{[\s\S]*\}/)
+      if (jsonMatch) {
+        const result = JSON.parse(jsonMatch[0])
+        return {
+          taskId: task.id,
+          status: result.verified ? "verified" : "rejected",
+          reason: result.reason || (result.verified ? "Task completed successfully" : "Task incomplete"),
+          verifiedAt: Date.now(),
+          modelUsed: modelConfig.modelID
+        }
+      }
+    } catch (parseError) {
+      console.warn("[Supervisor] Failed to parse verification response:", parseError)
+    }
+
+    // Fallback: Check for positive/negative keywords
+    const lowerResponse = responseText.toLowerCase()
+    const isPositive = lowerResponse.includes("verified") || 
+                       lowerResponse.includes("complete") || 
+                       lowerResponse.includes("approved")
+    const isNegative = lowerResponse.includes("rejected") || 
+                       lowerResponse.includes("incomplete") || 
+                       lowerResponse.includes("failed")
+    
+    return {
+      taskId: task.id,
+      status: isNegative ? "rejected" : (isPositive ? "verified" : "pending"),
+      reason: responseText.substring(0, 200),
+      verifiedAt: Date.now(),
+      modelUsed: modelConfig.modelID
+    }
+
+  } catch (error: any) {
+    console.error("[Supervisor] Verification failed:", error)
+    return {
+      taskId: task.id,
+      status: "pending",
+      reason: `Verification error: ${error.message}`,
+      verifiedAt: Date.now(),
+      modelUsed: "error"
+    }
+  }
+}
 
 /**
  * Engineer an optimal prompt using Big Pickle model
@@ -852,16 +1496,21 @@ async function buildTaskPrompt(
     baseUrl?: string
     useBigPickle?: boolean
     phaseContext?: PhaseContext
+    projectDirectory?: string
   }
 ): Promise<string> {
   const useBigPickle = options?.useBigPickle ?? true
+  const projectDir = options?.projectDirectory || getFallbackWorkspaceRoot()
+  
+  // Build critical requirements with project directory enforcement
+  const criticalRequirements = buildCriticalRequirements(projectDir)
   
   // Get phase-specific guidance
   const phaseGuidance = getPhaseSpecificGuidance(task, options?.phaseContext)
 
   // If custom prompt is provided, use it directly with critical requirements
   if (task.customPrompt) {
-    return `${task.customPrompt}${phaseGuidance}\n\n${CRITICAL_REQUIREMENTS}`
+    return `${task.customPrompt}${phaseGuidance}\n\n${criticalRequirements}`
   }
 
   // Use Big Pickle to engineer an optimal prompt
@@ -876,7 +1525,7 @@ async function buildTaskPrompt(
         baseUrl: options?.baseUrl,
       })
 
-      return `${engineeredPrompt}${phaseGuidance}\n\n${CRITICAL_REQUIREMENTS}`
+      return `${engineeredPrompt}${phaseGuidance}\n\n${criticalRequirements}`
     } catch (error) {
       console.warn("[BuildTaskPrompt] Big Pickle failed, using fallback:", error)
     }
@@ -884,7 +1533,7 @@ async function buildTaskPrompt(
 
   // Fallback to standard prompt with phase guidance
   const fallbackPrompt = buildFallbackPrompt(task.name, task.description, projectDescription)
-  return `${fallbackPrompt}${phaseGuidance}\n\n${CRITICAL_REQUIREMENTS}`
+  return `${fallbackPrompt}${phaseGuidance}\n\n${criticalRequirements}`
 }
 
 /**
@@ -1049,6 +1698,13 @@ export function createExecutionService(
     maxRetries?: number
     escalation?: Partial<EscalationConfig>
     onEscalation?: FailureWebhookHandler
+    // Interactive execution options
+    enableInteractiveMode?: boolean
+    enableSupervisorVerification?: boolean
+    enableWorkspaceEnforcement?: boolean
+    onAgentQuestion?: AgentQuestionCallback
+    onHumanApproval?: HumanApprovalCallback
+    onWorkspaceViolation?: WorkspaceViolationCallback
   }
 ) {
   // Merge escalation config with defaults
@@ -1068,10 +1724,29 @@ export function createExecutionService(
     retryOnFailure: options?.retryOnFailure ?? true,
     maxRetries: options?.maxRetries || 2,
     escalation: escalationConfig,
+    // Interactive mode settings - ALL ENABLED BY DEFAULT FOR SAFETY
+    enableInteractiveMode: options?.enableInteractiveMode ?? true,
+    enableSupervisorVerification: options?.enableSupervisorVerification ?? true,
+    enableWorkspaceEnforcement: options?.enableWorkspaceEnforcement ?? true,
   }
+
+  // =========================================================================
+  // PROJECT DIRECTORY ISOLATION
+  // Generate a unique project directory for this execution
+  // =========================================================================
+  const projectDirectory = generateProjectDirectory(plan.projectName)
+  console.log(`[ExecutionService] Project directory: ${projectDirectory}`)
+
+  // Interactive execution state
+  const pendingQuestions = new Map<string, AgentQuestion>()
+  const pendingApprovals = new Map<string, HumanApprovalRequest>()
+  const workspaceViolations: WorkspaceViolation[] = []
+  const supervisorVerifications = new Map<string, SupervisorVerification>()
 
   let running = true
   let paused = false
+  let waitingForInput = false // Tracks if we're waiting for user input
+  let projectDirectoryCreated = false // Tracks if project directory has been created
   let client: ReturnType<typeof getClient> | null = null
   
   const taskStates = new Map<string, TaskStatus>()
@@ -1212,10 +1887,11 @@ export function createExecutionService(
       // Get model configuration
       const modelConfig = getModelConfig(task.model)
 
-      // Build the prompt with phase-aware context
+      // Build the prompt with phase-aware context and project directory enforcement
       const prompt = await buildTaskPrompt(task, plan.description, { 
         baseUrl: config.baseUrl,
-        phaseContext
+        phaseContext,
+        projectDirectory
       })
 
       // Execute via SDK session.prompt with timeout to prevent hanging
@@ -1273,6 +1949,187 @@ export function createExecutionService(
         // Extract output
         const output = extractResponseText(response)
         const duration = Date.now() - startTime
+        
+        // ====================================================================
+        // INTERACTIVE EXECUTION CHECKS
+        // ====================================================================
+        
+        // 1. WORKSPACE BOUNDARY ENFORCEMENT
+        if (config.enableWorkspaceEnforcement) {
+          const violations = scanOutputForPathViolations(output, task.id, projectDirectory)
+          if (violations.length > 0) {
+            for (const violation of violations) {
+              workspaceViolations.push(violation)
+              console.error(`[WORKSPACE VIOLATION] Task ${task.id} attempted to access: ${violation.attemptedPath}`)
+              emitLog("error", `🚨 PROJECT BOUNDARY VIOLATION: Blocked access to ${violation.attemptedPath}`)
+              emitLog("error", `   Allowed directory: ${projectDirectory}`)
+              
+              // Notify via callback
+              if (options?.onWorkspaceViolation) {
+                options.onWorkspaceViolation(violation)
+              }
+              
+              // Emit event
+              onUpdate(getStatus(), {
+                type: "workspace_violation",
+                taskId: task.id,
+                violatedPath: violation.attemptedPath,
+                allowedWorkspace: projectDirectory,
+                message: `Agent attempted to access path outside project directory: ${violation.attemptedPath}`
+              })
+            }
+            
+            // If critical violations, fail the task
+            if (violations.some(v => v.blocked)) {
+              throw new Error(`Task blocked due to project boundary violation: attempted to access ${violations[0]?.attemptedPath} (allowed: ${projectDirectory})`)
+            }
+          }
+        }
+        
+        // 2. AGENT QUESTION DETECTION
+        if (config.enableInteractiveMode) {
+          const question = detectAgentQuestion(output, task.id)
+          if (question) {
+            console.log(`[InteractiveMode] Agent question detected in task ${task.id}:`, question.question.substring(0, 100))
+            emitLog("warning", `🤔 Agent is asking a question: "${question.question.substring(0, 80)}..."`)
+            
+            pendingQuestions.set(question.id, question)
+            waitingForInput = true
+            
+            // Emit event for UI
+            onUpdate(getStatus(), {
+              type: "agent_question",
+              taskId: task.id,
+              question: question.question,
+              questionContext: question.context,
+              message: "Agent needs clarification before proceeding"
+            })
+            
+            // If callback provided, wait for answer
+            if (options?.onAgentQuestion) {
+              try {
+                const answer = await options.onAgentQuestion(question)
+                question.answered = true
+                question.answer = answer
+                pendingQuestions.set(question.id, question)
+                waitingForInput = false
+                
+                emitLog("info", `User answered: "${answer.substring(0, 50)}..."`)
+                
+                // Re-execute task with the answer context
+                const followUpPrompt = `${prompt}\n\n## User's Answer to Your Question\n\nYou asked: "${question.question}"\n\nUser's response: "${answer}"\n\nPlease proceed with the implementation based on this clarification.`
+                
+                // Continue with follow-up execution
+                const followUpResponse = await client!.session.prompt({
+                  path: { id: sessionId },
+                  body: {
+                    model: modelConfig,
+                    parts: [{ type: "text" as const, text: followUpPrompt }]
+                  }
+                })
+                
+                const followUpOutput = extractResponseText(followUpResponse)
+                // Use the follow-up output instead
+                Object.assign(response, { followUpOutput })
+              } catch (questionError) {
+                console.error("[InteractiveMode] Failed to get answer:", questionError)
+                // Continue without answer
+              }
+            } else {
+              // No callback - pause execution
+              paused = true
+              emitLog("warning", "Execution paused waiting for user input. Use resume() after answering the question.")
+              return // Exit and wait for resume with answer
+            }
+          }
+        }
+        
+        // 3. SUPERVISOR VERIFICATION
+        if (config.enableSupervisorVerification) {
+          emitLog("info", `🔍 Supervisor verifying task completion...`)
+          taskStates.set(task.id, { status: "running", progress: 85 })
+          onUpdate(getStatus(), {
+            type: "supervisor_verification",
+            taskId: task.id,
+            verificationStatus: "pending",
+            message: "Supervisor model is verifying task completion..."
+          })
+          
+          const verification = await verifySupervisorCompletion(task, output, config.baseUrl)
+          supervisorVerifications.set(task.id, verification)
+          
+          if (verification.status === "rejected") {
+            emitLog("warning", `⚠️ Supervisor rejected: ${verification.reason}`)
+            
+            onUpdate(getStatus(), {
+              type: "supervisor_verification",
+              taskId: task.id,
+              verificationStatus: "rejected",
+              verificationReason: verification.reason,
+              message: `Supervisor: ${verification.reason}`
+            })
+            
+            // Create human approval request for rejected tasks
+            const approvalRequest: HumanApprovalRequest = {
+              id: `approval-${task.id}-${Date.now()}`,
+              taskId: task.id,
+              type: "task_completion",
+              details: `Supervisor (${verification.modelUsed}) rejected this task:\n\n${verification.reason}\n\nDo you want to approve anyway and move to the next task?`,
+              timestamp: Date.now(),
+              approved: null
+            }
+            
+            pendingApprovals.set(approvalRequest.id, approvalRequest)
+            
+            // Emit human approval event
+            onUpdate(getStatus(), {
+              type: "human_approval_required",
+              taskId: task.id,
+              approvalType: "task_completion",
+              approvalDetails: approvalRequest.details,
+              message: "Human approval required for task completion"
+            })
+            
+            // If callback provided, wait for approval
+            if (options?.onHumanApproval) {
+              try {
+                const approved = await options.onHumanApproval(approvalRequest)
+                approvalRequest.approved = approved
+                approvalRequest.respondedAt = Date.now()
+                pendingApprovals.set(approvalRequest.id, approvalRequest)
+                
+                if (!approved) {
+                  emitLog("error", "Task rejected by human reviewer - will retry")
+                  throw new Error("Task rejected by human reviewer after supervisor rejection")
+                }
+                
+                emitLog("success", "Human approved task despite supervisor concerns")
+              } catch (approvalError) {
+                console.error("[InteractiveMode] Human approval failed:", approvalError)
+                throw new Error("Task requires human approval but failed to get response")
+              }
+            } else {
+              // No callback - pause and wait
+              waitingForInput = true
+              paused = true
+              emitLog("warning", "Waiting for human approval. Call approve(taskId) or reject(taskId).")
+              return
+            }
+          } else if (verification.status === "verified") {
+            emitLog("success", `✅ Supervisor verified: ${verification.reason || "Task complete"}`)
+            onUpdate(getStatus(), {
+              type: "supervisor_verification",
+              taskId: task.id,
+              verificationStatus: "verified",
+              verificationReason: verification.reason,
+              message: `Verified by ${verification.modelUsed}`
+            })
+          }
+        }
+        
+        // ====================================================================
+        // END INTERACTIVE CHECKS
+        // ====================================================================
         
         // Estimate tokens and cost (rough estimation)
         const estimatedTokens = Math.round((prompt.length + output.length) / 4)
@@ -1389,7 +2246,7 @@ export function createExecutionService(
             maxEscalations: config.escalation.maxEscalations,
             error: errorMessage,
             failedOutput: config.escalation.includeFailedOutputInEscalation ? failedOutput : undefined,
-            prompt: await buildTaskPrompt(task, plan.description, { baseUrl: config.baseUrl }),
+            prompt: await buildTaskPrompt(task, plan.description, { baseUrl: config.baseUrl, projectDirectory }),
             timestamp: Date.now(),
           }
           
@@ -1652,6 +2509,49 @@ export function createExecutionService(
       client = getClient(config.baseUrl)
       emitLog("info", "Connected to OpenCode SDK")
 
+      // =====================================================================
+      // STEP 0: Create isolated project directory
+      // =====================================================================
+      if (!projectDirectoryCreated) {
+        emitLog("info", `📁 Creating project directory: ${projectDirectory}`)
+        
+        try {
+          // Create the project directory via SDK session
+          const setupSession = await client.session.create({
+            body: { title: `Setup: Create project directory` }
+          })
+          
+          if (setupSession.data?.id) {
+            const setupModelConfig = await getBestAvailableModelConfig("fast")
+            await client.session.prompt({
+              path: { id: setupSession.data.id },
+              body: {
+                model: setupModelConfig,
+                parts: [{
+                  type: "text" as const,
+                  text: `Create the project directory at: ${projectDirectory}
+
+Use mkdir -p to create the directory if it doesn't exist.
+This is a simple setup task - just create the directory and confirm it exists.
+
+Command to run: mkdir -p "${projectDirectory}"
+
+After creating, confirm the directory exists.`
+                }]
+              }
+            })
+            
+            projectDirectoryCreated = true
+            emitLog("success", `✅ Project directory created: ${projectDirectory}`)
+          }
+        } catch (setupError: any) {
+          console.warn("[ExecutionService] Failed to create project directory via SDK:", setupError)
+          // Continue anyway - the directory will be created when files are written
+          projectDirectoryCreated = true
+          emitLog("warning", `Project directory will be created on first file write`)
+        }
+      }
+
       // Execute tasks sequentially (can be parallelized if needed)
       for (const task of plan.tasks) {
         if (!running) break
@@ -1678,6 +2578,7 @@ export function createExecutionService(
       const status = getStatus()
       onUpdate(status, { type: "execution_completed" })
       emitLog("success", `Execution complete: ${status.completedTasks}/${status.totalTasks} tasks succeeded`)
+      emitLog("info", `📂 Project files at: ${projectDirectory}`)
 
     } catch (error: any) {
       console.error("[ExecutionService] Execution failed:", error)
@@ -1710,6 +2611,92 @@ export function createExecutionService(
     activeSessions.clear()
   }
 
+  // Interactive mode methods
+  const answerQuestion = async (questionId: string, answer: string) => {
+    const question = pendingQuestions.get(questionId)
+    if (!question) {
+      console.warn(`[InteractiveMode] Question ${questionId} not found`)
+      return false
+    }
+    
+    question.answered = true
+    question.answer = answer
+    pendingQuestions.set(questionId, question)
+    waitingForInput = false
+    
+    emitLog("info", `Answered question: "${answer.substring(0, 50)}..."`)
+    
+    // Resume execution if paused
+    if (paused) {
+      paused = false
+    }
+    
+    return true
+  }
+  
+  const approveTask = (taskId: string) => {
+    const approval = [...pendingApprovals.values()].find(a => a.taskId === taskId)
+    if (!approval) {
+      console.warn(`[InteractiveMode] No pending approval for task ${taskId}`)
+      return false
+    }
+    
+    approval.approved = true
+    approval.respondedAt = Date.now()
+    pendingApprovals.set(approval.id, approval)
+    waitingForInput = false
+    
+    emitLog("success", `Human approved task: ${taskId}`)
+    
+    // Resume if paused
+    if (paused) {
+      paused = false
+    }
+    
+    return true
+  }
+  
+  const rejectTask = (taskId: string) => {
+    const approval = [...pendingApprovals.values()].find(a => a.taskId === taskId)
+    if (!approval) {
+      console.warn(`[InteractiveMode] No pending approval for task ${taskId}`)
+      return false
+    }
+    
+    approval.approved = false
+    approval.respondedAt = Date.now()
+    pendingApprovals.set(approval.id, approval)
+    
+    emitLog("error", `Human rejected task: ${taskId}`)
+    
+    // Mark task as failed
+    const currentState = taskStates.get(taskId)
+    if (currentState) {
+      taskStates.set(taskId, {
+        ...currentState,
+        status: "failed",
+        error: "Rejected by human reviewer"
+      })
+      failedTasks.add(taskId)
+    }
+    
+    waitingForInput = false
+    
+    // Resume if paused
+    if (paused) {
+      paused = false
+    }
+    
+    return true
+  }
+  
+  const getPendingQuestions = () => [...pendingQuestions.values()].filter(q => !q.answered)
+  const getPendingApprovals = () => [...pendingApprovals.values()].filter(a => a.approved === null)
+  const getWorkspaceViolations = () => [...workspaceViolations]
+  const getSupervisorVerifications = () => new Map(supervisorVerifications)
+  const isWaitingForInput = () => waitingForInput
+  const getProjectDirectory = () => projectDirectory
+
   return {
     pause: () => {
       paused = true
@@ -1717,6 +2704,7 @@ export function createExecutionService(
     },
     resume: () => {
       paused = false
+      waitingForInput = false
       emitLog("info", "Execution resumed")
     },
     cancel: () => {
@@ -1727,6 +2715,18 @@ export function createExecutionService(
     cancelTask, // Expose for individual task cancellation
     isPaused: () => paused,
     getStatus,
+    // Interactive mode methods
+    answerQuestion,
+    approveTask,
+    rejectTask,
+    getPendingQuestions,
+    getPendingApprovals,
+    getWorkspaceViolations,
+    getSupervisorVerifications,
+    isWaitingForInput,
+    // Project directory
+    getProjectDirectory,
+    projectDirectory, // Direct access to path
   }
 }
 
