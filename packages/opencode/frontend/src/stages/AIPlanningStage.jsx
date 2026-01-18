@@ -72,6 +72,20 @@ function formatDuration(minutes) {
   return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`
 }
 
+/**
+ * Strip time estimates from task/phase names
+ * Removes patterns like "(4 Weeks)", "(2-3 Days)", "(30 min)", etc.
+ */
+function stripTimeEstimate(name) {
+  if (!name) return name
+  // Remove patterns like (X weeks), (X-Y days), (X min), (X hours), (X-Y hours), etc.
+  return name
+    .replace(/\s*\([^)]*(?:week|day|hour|minute|min|hr|wk|mo|month)[s]?\)/gi, '')
+    .replace(/\s*\(\d+[-–]?\d*\s*(?:week|day|hour|minute|min|hr|wk|mo|month)[s]?\)/gi, '')
+    .replace(/\s*-\s*(?:\d+[-–]?\d*\s*(?:week|day|hour|minute|min|hr|wk|mo|month)[s]?)$/gi, '')
+    .trim()
+}
+
 // Generate default prompt for a task - Enhanced with production-ready requirements
 function generateDefaultPrompt(task, projectDescription) {
   return `## Task: ${task.name}
@@ -746,7 +760,7 @@ export function AIPlanningStage({ idea, onApprove, onBack }) {
                     {phaseIndex + 1}
                   </div>
                   <div className="text-left">
-                    <div className="font-semibold text-white">{phase.name}</div>
+                    <div className="font-semibold text-white">{stripTimeEstimate(phase.name)}</div>
                     <div className="text-sm text-gray-400">{phase.tasks.length} tasks</div>
                   </div>
                 </div>
@@ -773,7 +787,7 @@ export function AIPlanningStage({ idea, onApprove, onBack }) {
                       >
                         <div className="flex items-center justify-between mb-2">
                           <div className="flex items-center gap-2">
-                            <h4 className="font-medium text-white">{task.name}</h4>
+                            <h4 className="font-medium text-white">{stripTimeEstimate(task.name)}</h4>
                             {hasModifications && (
                               <span className="text-xs text-yellow-400">• Configured</span>
                             )}

@@ -199,6 +199,42 @@ const PROVIDER_NAMES: Record<string, string> = {
   zen: "OpenCode Zen",
   opencode: "OpenCode",
   google: "Google",
+  anthropic: "Anthropic",
+}
+
+// KNOWN VALID MODELS - Only these models should be assigned
+// This prevents assignment of fake/invalid models like "gpt-5.2-codex"
+const KNOWN_VALID_MODELS = new Set([
+  // OpenAI
+  "gpt-4", "gpt-4-turbo", "gpt-4o", "gpt-4o-mini", "gpt-4.1", "gpt-4.1-mini", "gpt-4.1-nano",
+  "o1", "o1-mini", "o1-preview", "o3", "o3-mini",
+  // Anthropic  
+  "claude-opus-4", "claude-sonnet-4", "claude-sonnet-3.5", "claude-haiku-3", 
+  "claude-3-opus", "claude-3-sonnet", "claude-3-haiku",
+  // Google
+  "gemini-pro", "gemini-flash", "gemini-2-flash", "gemini-3-flash-preview", "gemini-1.5-pro", "gemini-1.5-flash",
+  // GitHub Copilot
+  "copilot-chat", "copilot",
+  // OpenCode
+  "zen", "zen-standard", "zen-fast",
+])
+
+/**
+ * Validate model ID is a known valid model
+ */
+function isValidModel(modelId: string): boolean {
+  // Check exact match first
+  if (KNOWN_VALID_MODELS.has(modelId)) return true
+  // Check if any known model is a prefix/suffix
+  for (const known of KNOWN_VALID_MODELS) {
+    if (modelId.includes(known) || known.includes(modelId)) return true
+  }
+  // Reject any unknown model with suspicious patterns
+  if (modelId.includes("codex") && !modelId.includes("davinci")) {
+    console.error(`[isValidModel] Rejecting suspicious model: ${modelId}`)
+    return false
+  }
+  return true // Allow other models that pass basic validation
 }
 
 // Cached available models from SDK - populated on first fetch
@@ -318,13 +354,36 @@ export async function fetchAvailableModels(baseUrl?: string): Promise<AvailableM
   if (availableModels.length === 0) {
     throw new Error("[ExecutionService] No configured models available. Please configure at least one provider in OpenCode.")
   }
+  
+  // Log all available models for debugging
+  console.log("[fetchAvailableModels] Available models:", availableModels.map(m => ({
+    id: m.id,
+    provider: m.providerId,
+    tier: m.tier,
+    valid: isValidModel(m.id)
+  })))
+  
+  // Filter out invalid/fake models
+  const validModels = availableModels.filter(m => {
+    const valid = isValidModel(m.id)
+    if (!valid) {
+      console.warn(`[fetchAvailableModels] Filtering out invalid model: ${m.id}`)
+    }
+    return valid
+  })
+  
+  if (validModels.length === 0) {
+    throw new Error("[ExecutionService] No valid models available after filtering. Available models may be fake/invalid.")
+  }
 
   // Sort by availability and tier
-  const sorted = models.sort((a, b) => {
+  const sorted = validModels.sort((a, b) => {
     if (a.available !== b.available) return a.available ? -1 : 1
     const tierOrder = { premium: 0, standard: 1, fast: 2 }
     return tierOrder[a.tier] - tierOrder[b.tier]
   })
+  
+  console.log("[fetchAvailableModels] Final valid model list:", sorted.map(m => m.id))
   
   // Update the cache
   cachedAvailableModels = sorted
@@ -386,6 +445,14 @@ function getModelConfig(modelName: string): { providerID: string; modelID: strin
 const CRITICAL_REQUIREMENTS = `
 ## CRITICAL REQUIREMENTS - READ CAREFULLY
 
+### 🛡️ WORKSPACE BOUNDARY - ABSOLUTE SECURITY REQUIREMENT:
+- **ONLY modify files within the current project directory**
+- **NEVER navigate to parent directories (../) outside the project**
+- **NEVER modify files in /home, /etc, /usr, or any system directories**
+- **NEVER delete files outside the current project**
+- **If you're unsure if a path is within the project, DO NOT modify it**
+- **All file operations must use relative paths from project root**
+
 ### ⚠️ ABSOLUTE REQUIREMENTS (MUST FOLLOW):
 1. **COMPLETE IMPLEMENTATION ONLY** - Every function, method, and component MUST be fully implemented
 2. **NO STUBS OR PLACEHOLDERS** - NEVER write stub functions, TODO comments, "// implement later", or placeholder code
@@ -403,6 +470,9 @@ const CRITICAL_REQUIREMENTS = `
 - ❌ Empty function bodies
 - ❌ Comments like "implement later", "add logic here", "finish this"
 - ❌ Returning mock/fake data when real implementation is needed
+- ❌ Modifying ANY file outside the current project directory
+- ❌ Using rm -rf or mass delete operations
+- ❌ Navigating to parent directories beyond the project root
 
 ### ✅ REQUIRED IN ALL CODE:
 1. **Complete Error Handling** - Handle all error cases with proper try/catch, error types, and recovery
@@ -1068,12 +1138,17 @@ export function createExecutionService(
       onUpdate(getStatus(), null)
 
       // Complexity-based timeout: simple=3min, medium=5min, complex=10min
+      // Extended timeout for codex/o1/o3 models that can take longer
+      const isSlowModel = modelConfig.modelID.includes("codex") || 
+                          modelConfig.modelID.includes("o1") || 
+                          modelConfig.modelID.includes("o3") ||
+                          modelConfig.modelID.includes("opus")
       const TIMEOUT_BY_COMPLEXITY: Record<string, number> = {
-        simple: 3 * 60 * 1000,
-        medium: 5 * 60 * 1000,
-        complex: 10 * 60 * 1000,
+        simple: isSlowModel ? 10 * 60 * 1000 : 3 * 60 * 1000,
+        medium: isSlowModel ? 15 * 60 * 1000 : 5 * 60 * 1000,
+        complex: isSlowModel ? 20 * 60 * 1000 : 10 * 60 * 1000,
       }
-      const TASK_TIMEOUT_MS = TIMEOUT_BY_COMPLEXITY[task.complexity] || 5 * 60 * 1000
+      const TASK_TIMEOUT_MS = TIMEOUT_BY_COMPLEXITY[task.complexity] || (isSlowModel ? 15 * 60 * 1000 : 5 * 60 * 1000)
       
       // Create a timeout that also triggers abort
       let timeoutId: ReturnType<typeof setTimeout> | null = null
@@ -1811,6 +1886,10 @@ function assignOptimalModel(complexity: string, availableModels?: AvailableModel
   const models = availableModels || cachedAvailableModels || []
   const available = models.filter(m => m.available)
   
+  // Debug logging
+  console.log(`[assignOptimalModel] Complexity: ${complexity}, Available models: ${available.length}`)
+  console.log(`[assignOptimalModel] Model list:`, available.map(m => ({ id: m.id, tier: m.tier, provider: m.providerId })))
+  
   // If no available models, throw error - don't use hardcoded fallbacks
   if (available.length === 0) {
     throw new Error(
@@ -1825,33 +1904,55 @@ function assignOptimalModel(complexity: string, availableModels?: AvailableModel
   const standardModels = available.filter(m => m.tier === "standard")
   const fastModels = available.filter(m => m.tier === "fast")
   
+  console.log(`[assignOptimalModel] By tier - Premium: ${premiumModels.length}, Standard: ${standardModels.length}, Fast: ${fastModels.length}`)
+  
+  let selectedModel: string
+  
   switch (complexity) {
     case "complex":
       // Prefer standard tier for complex tasks (good balance)
       // Premium only if no standard available
-      if (standardModels.length > 0) return standardModels[0]!.id
-      if (premiumModels.length > 0) return premiumModels[0]!.id
-      if (fastModels.length > 0) return fastModels[0]!.id
-      return available[0]!.id
+      if (standardModels.length > 0) selectedModel = standardModels[0]!.id
+      else if (premiumModels.length > 0) selectedModel = premiumModels[0]!.id
+      else if (fastModels.length > 0) selectedModel = fastModels[0]!.id
+      else selectedModel = available[0]!.id
+      break
     case "medium":
       // Prefer standard tier, fall back to premium or fast
-      if (standardModels.length > 0) return standardModels[0]!.id
-      if (premiumModels.length > 0) return premiumModels[0]!.id
-      if (fastModels.length > 0) return fastModels[0]!.id
-      return available[0]!.id
+      if (standardModels.length > 0) selectedModel = standardModels[0]!.id
+      else if (premiumModels.length > 0) selectedModel = premiumModels[0]!.id
+      else if (fastModels.length > 0) selectedModel = fastModels[0]!.id
+      else selectedModel = available[0]!.id
+      break
     case "simple":
       // Prefer fast tier for simple tasks (cost-efficient)
-      if (fastModels.length > 0) return fastModels[0]!.id
-      if (standardModels.length > 0) return standardModels[0]!.id
-      if (premiumModels.length > 0) return premiumModels[0]!.id
-      return available[0]!.id
+      if (fastModels.length > 0) selectedModel = fastModels[0]!.id
+      else if (standardModels.length > 0) selectedModel = standardModels[0]!.id
+      else if (premiumModels.length > 0) selectedModel = premiumModels[0]!.id
+      else selectedModel = available[0]!.id
+      break
     default:
       // Default to best available
-      if (standardModels.length > 0) return standardModels[0]!.id
-      if (fastModels.length > 0) return fastModels[0]!.id
-      if (premiumModels.length > 0) return premiumModels[0]!.id
-      return available[0]!.id
+      if (standardModels.length > 0) selectedModel = standardModels[0]!.id
+      else if (fastModels.length > 0) selectedModel = fastModels[0]!.id
+      else if (premiumModels.length > 0) selectedModel = premiumModels[0]!.id
+      else selectedModel = available[0]!.id
   }
+  
+  // Validate selected model is a known valid model
+  if (!isValidModel(selectedModel)) {
+    console.error(`[assignOptimalModel] Selected invalid model: ${selectedModel}, falling back to first available`)
+    // Find first valid model
+    for (const m of available) {
+      if (isValidModel(m.id)) {
+        selectedModel = m.id
+        break
+      }
+    }
+  }
+  
+  console.log(`[assignOptimalModel] Selected model: ${selectedModel} for complexity: ${complexity}`)
+  return selectedModel
 }
 
 /**

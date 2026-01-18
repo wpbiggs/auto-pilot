@@ -10,6 +10,19 @@ import {
   checkSDKConnection 
 } from "../services/execution"
 
+/**
+ * Strip time estimates from task/phase names
+ * Removes patterns like "(4 Weeks)", "(2-3 Days)", "(30 min)", etc.
+ */
+function stripTimeEstimate(name) {
+  if (!name) return name
+  return name
+    .replace(/\s*\([^)]*(?:week|day|hour|minute|min|hr|wk|mo|month)[s]?\)/gi, '')
+    .replace(/\s*\(\d+[-–]?\d*\s*(?:week|day|hour|minute|min|hr|wk|mo|month)[s]?\)/gi, '')
+    .replace(/\s*-\s*(?:\d+[-–]?\d*\s*(?:week|day|hour|minute|min|hr|wk|mo|month)[s]?)$/gi, '')
+    .trim()
+}
+
 function TaskCard({ task }) {
   const [showOutput, setShowOutput] = useState(false)
   
@@ -43,7 +56,7 @@ function TaskCard({ task }) {
           }`}>
             {getStatusIcon(task.status)}
           </span>
-          <span className="font-medium text-white">{task.name}</span>
+          <span className="font-medium text-white">{stripTimeEstimate(task.name)}</span>
         </div>
         <div className="flex items-center gap-2">
           <span className="text-sm text-gray-400 font-mono">
