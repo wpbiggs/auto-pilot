@@ -1914,9 +1914,28 @@ function scoreComplexity(description: string): { complexity: string; estimateMin
  * Track model usage for diversity - rotate through available models
  */
 const modelUsageCounter = new Map<string, number>()
+let modelAssignmentIndex = 0 // Global index for true round-robin
+
+/**
+ * Get the next model in rotation from a list, promoting diversity
+ * Uses a simple round-robin approach combined with usage tracking
+ */
+function getNextModelInRotation(models: AvailableModel[]): AvailableModel {
+  if (models.length === 0) throw new Error("No models provided")
+  if (models.length === 1) return models[0]!
+  
+  // Simple round-robin: use global index to rotate through models
+  const index = modelAssignmentIndex % models.length
+  modelAssignmentIndex++
+  
+  console.log(`[getNextModelInRotation] Selecting index ${index} from ${models.length} models: ${models.map(m => m.id).join(', ')}`)
+  
+  return models[index]!
+}
 
 /**
  * Get the least-used model from a list, promoting diversity
+ * Fallback method using usage counter
  */
 function getLeastUsedModel(models: AvailableModel[]): AvailableModel {
   if (models.length === 0) throw new Error("No models provided")
@@ -1992,60 +2011,62 @@ function assignOptimalModel(complexity: string, availableModels?: AvailableModel
     )
   }
   
-  // Apply native provider preference
-  const preferredModels = preferNativeProvider(available)
+  // DON'T filter by native provider - just use all available models for diversity
+  // The preferNativeProvider was causing us to filter down to only 1-2 models
   
-  // Find models by tier
-  const premiumModels = preferredModels.filter(m => m.tier === "premium")
-  const standardModels = preferredModels.filter(m => m.tier === "standard")
-  const fastModels = preferredModels.filter(m => m.tier === "fast")
+  // Find models by tier from ALL available (not filtered)
+  const premiumModels = available.filter(m => m.tier === "premium")
+  const standardModels = available.filter(m => m.tier === "standard")
+  const fastModels = available.filter(m => m.tier === "fast")
   
-  console.log(`[assignOptimalModel] By tier - Premium: ${premiumModels.map(m => m.id)}, Standard: ${standardModels.map(m => m.id)}, Fast: ${fastModels.map(m => m.id)}`)
+  console.log(`[assignOptimalModel] Available: ${available.length} total`)
+  console.log(`[assignOptimalModel] By tier - Premium: ${premiumModels.length}, Standard: ${standardModels.length}, Fast: ${fastModels.length}`)
+  console.log(`[assignOptimalModel] All models:`, available.map(m => `${m.id} (${m.providerId})`).join(', '))
   
   let selectedModel: AvailableModel
   
+  // Use round-robin rotation to spread across models
   switch (complexity) {
     case "complex":
       // For complex tasks: prefer premium, then standard
-      if (premiumModels.length > 0) selectedModel = getLeastUsedModel(premiumModels)
-      else if (standardModels.length > 0) selectedModel = getLeastUsedModel(standardModels)
-      else if (fastModels.length > 0) selectedModel = getLeastUsedModel(fastModels)
-      else selectedModel = getLeastUsedModel(preferredModels)
+      if (premiumModels.length > 0) selectedModel = getNextModelInRotation(premiumModels)
+      else if (standardModels.length > 0) selectedModel = getNextModelInRotation(standardModels)
+      else if (fastModels.length > 0) selectedModel = getNextModelInRotation(fastModels)
+      else selectedModel = getNextModelInRotation(available)
       break
     case "medium":
       // For medium tasks: prefer standard, then fast
-      if (standardModels.length > 0) selectedModel = getLeastUsedModel(standardModels)
-      else if (fastModels.length > 0) selectedModel = getLeastUsedModel(fastModels)
-      else if (premiumModels.length > 0) selectedModel = getLeastUsedModel(premiumModels)
-      else selectedModel = getLeastUsedModel(preferredModels)
+      if (standardModels.length > 0) selectedModel = getNextModelInRotation(standardModels)
+      else if (fastModels.length > 0) selectedModel = getNextModelInRotation(fastModels)
+      else if (premiumModels.length > 0) selectedModel = getNextModelInRotation(premiumModels)
+      else selectedModel = getNextModelInRotation(available)
       break
     case "simple":
       // For simple tasks: prefer fast (cost-efficient)
-      if (fastModels.length > 0) selectedModel = getLeastUsedModel(fastModels)
-      else if (standardModels.length > 0) selectedModel = getLeastUsedModel(standardModels)
-      else if (premiumModels.length > 0) selectedModel = getLeastUsedModel(premiumModels)
-      else selectedModel = getLeastUsedModel(preferredModels)
+      if (fastModels.length > 0) selectedModel = getNextModelInRotation(fastModels)
+      else if (standardModels.length > 0) selectedModel = getNextModelInRotation(standardModels)
+      else if (premiumModels.length > 0) selectedModel = getNextModelInRotation(premiumModels)
+      else selectedModel = getNextModelInRotation(available)
       break
     default:
       // Default: rotate through all available
-      selectedModel = getLeastUsedModel(preferredModels)
+      selectedModel = getNextModelInRotation(available)
   }
   
   // Validate selected model is a known valid model
   if (!isValidModel(selectedModel.id)) {
     console.error(`[assignOptimalModel] Selected invalid model: ${selectedModel.id}, finding alternative`)
-    // Find first valid model with least usage
-    const validModels = preferredModels.filter(m => isValidModel(m.id))
+    // Find first valid model with rotation
+    const validModels = available.filter(m => isValidModel(m.id))
     if (validModels.length > 0) {
-      selectedModel = getLeastUsedModel(validModels)
+      selectedModel = getNextModelInRotation(validModels)
     }
   }
   
-  // Increment usage counter
+  // Increment usage counter for tracking
   modelUsageCounter.set(selectedModel.id, (modelUsageCounter.get(selectedModel.id) || 0) + 1)
   
-  console.log(`[assignOptimalModel] Selected: ${selectedModel.id} (provider: ${selectedModel.providerId}) for complexity: ${complexity}`)
-  console.log(`[assignOptimalModel] Usage counts:`, Object.fromEntries(modelUsageCounter))
+  console.log(`[assignOptimalModel] ✓ Selected: ${selectedModel.id} (provider: ${selectedModel.providerId}) for complexity: ${complexity}`)
   
   return selectedModel.id
 }
